@@ -3,7 +3,7 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [ main ]  # Puedes cambiarlo según tu rama principal
+    branches: [ main ]
 
 jobs:
   build-and-deploy:
@@ -32,26 +32,68 @@ jobs:
       run: |
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-      
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+    
+    # Crear archivo de clave SSH
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        
+    # Preparar el archivo de configuración AWS para EC2
+    - name: Prepare AWS credentials file
+      run: |
+        mkdir -p aws-config
+        cat > aws-config/credentials << EOL
+        [default]
+        aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        region = ${{ secrets.AWS_REGION }}
+        EOL
+        
+    # Transferir credenciales AWS a EC2
+    - name: Copy AWS credentials to EC2
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key_path: ~/.ssh/id_rsa
+        source: "aws-config/credentials"
+        target: "~/.aws/"
+        
     - name: Deploy to EC2
       uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        key_path: ~/.ssh/id_rsa
         script: |
-          # Detener y eliminar contenedores antiguos si existen
+          # Asegurar que AWS CLI está instalado
+          if ! command -v aws &> /dev/null; then
+            echo "AWS CLI no encontrado, instalando..."
+            sudo apt-get update && sudo apt-get install -y awscli || \
+            sudo yum install -y awscli
+          fi
+          
+          # Confirmar que tenemos las credenciales
+          mkdir -p ~/.aws
+          aws configure list
+          
+          # Detener y eliminar contenedores antiguos si existen (ignoramos errores)
           docker stop django-app || true
           docker rm django-app || true
           
-          # Iniciar sesión en ECR para poder extraer la imagen
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+          # Iniciar sesión en ECR utilizando las credenciales configuradas
+          aws_account_id=$(aws sts get-caller-identity --query Account --output text)
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $aws_account_id.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
           
           # Extraer la nueva imagen
+          echo "Extrayendo imagen: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}"
           docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
           
           # Ejecutar el nuevo contenedor
+          echo "Ejecutando contenedor..."
           docker run -d \
             --name django-app \
             -p 8000:8000 \
@@ -59,4 +101,7 @@ jobs:
             -e DEBUG=False \
             -e ALLOWED_HOSTS="${{ secrets.ALLOWED_HOSTS }}" \
             -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e DJANGO_SETTINGS_MODULE="excel_to_json.settings" \
             ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
+          
+          echo "Despliegue completado"
