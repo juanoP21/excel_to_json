@@ -9,6 +9,8 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
+import os
+from django.core.exceptions import ImproperlyConfigured
 
 from pathlib import Path
 
@@ -20,12 +22,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-n*h7-zbmz6jrw*m=)y!e==oueki9w7f2p7pfui=39hi9_&x14v'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    raise ImproperlyConfigured("La variable de entorno DJANGO_SECRET_KEY no está definida")  # :contentReference[oaicite:0]{index=0}
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# 3. DEBUG: por defecto False en producción, puede activarse con 'True'
+DEBUG = os.getenv('DJANGO_DEBUG', 'False') == 'True'  # :contentReference[oaicite:1]{index=1}
 
-ALLOWED_HOSTS = []
+# 4. ALLOWED_HOSTS: lee una lista separada por comas (sin espacios)
+hosts = os.getenv('ALLOWED_HOSTS', '')
+# Si no se define, queda vacío → Django usará [] y fallará con DEBUG=False
+ALLOWED_HOSTS = [h.strip() for h in hosts.split(',') if h.strip()]  # :contentReference[oaicite:2]{index=2}
 
 
 # Application definition
