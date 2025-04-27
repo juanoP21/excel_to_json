@@ -1,0 +1,58 @@
+name: Deploy Django to EC2
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3                                              # GitHub Actions Docs
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run tests
+      run: |
+        python manage.py test                                          # (opcional)
+
+    - name: Log in to DockerHub
+      if: ${{ secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN != '' }}
+      run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin  :contentReference[oaicite:9]{index=9}
+
+    - name: Build Docker image
+      run: docker build -t django-app:latest .                           # Dockerfile en la raíz :contentReference[oaicite:10]{index=10}
+
+    - name: Tag & push Docker image
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      run: |
+        docker tag django-app:latest $DOCKERHUB_USERNAME/django-app:latest
+        docker push $DOCKERHUB_USERNAME/django-app:latest               # DockerHub :contentReference[oaicite:11]{index=11}
+      if: secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN
+
+    - name: Start ssh-agent
+      uses: webfactory/ssh-agent@v0.5.3
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}                 # SSH key agent :contentReference[oaicite:12]{index=12}
+
+    - name: Deploy via SSH
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          docker pull $DOCKERHUB_USERNAME/django-app:latest             # o usa tu repositorio privado
+          docker stop django || true
+          docker rm django   || true
+          docker run -d --name django -p 80:8000 \
+            -e DJANGO_SETTINGS_MODULE=myproject.settings.prod          \
+            $DOCKERHUB_USERNAME/django-app:latest
+        EOF                                                      :contentReference[oaicite:13]{index=13}
