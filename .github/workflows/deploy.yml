@@ -34,68 +34,37 @@ jobs:
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
     
-    # Preparar el archivo de credenciales AWS para enviar a EC2
-    - name: Prepare AWS credentials file
+    - name: Start ssh-agent
+      uses: webfactory/ssh-agent@v0.5.3
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+        
+    - name: Deploy via SSH
       run: |
-        mkdir -p aws-config
-        cat > aws-config/credentials << EOL
-        [default]
-        aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        region = ${{ secrets.AWS_REGION }}
-        EOL
-    
-    # Configurar SSH correctamente
-    - name: Setup SSH
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/private_key
-        chmod 600 ~/.ssh/private_key
-        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-    
-    # Copiar las credenciales AWS a EC2
-    - name: Copy AWS credentials to EC2
-      run: |
-        scp -i ~/.ssh/private_key -o StrictHostKeyChecking=no aws-config/credentials ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/.aws/credentials
-      
-    # Desplegar en EC2 usando SSH directo
-    - name: Deploy to EC2
-      run: |
-        ssh -i ~/.ssh/private_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
-          # Asegurar que AWS CLI está instalado
-          if ! command -v aws &> /dev/null; then
-            echo "AWS CLI no encontrado, instalando..."
-            sudo apt-get update && sudo apt-get install -y awscli || \
-            sudo yum install -y awscli
-          fi
+        ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          # Exportar variables AWS para autenticación
+          export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+          export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          export AWS_REGION="${{ secrets.AWS_REGION }}"
           
-          # Confirmar que tenemos las credenciales
-          mkdir -p ~/.aws
-          aws configure list
-          
-          # Detener y eliminar contenedores antiguos si existen (ignoramos errores)
+          # Detener contenedor existente si existe
           docker stop django-app || true
           docker rm django-app || true
           
-          # Iniciar sesión en ECR utilizando las credenciales configuradas
-          aws_account_id=$(aws sts get-caller-identity --query Account --output text)
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin $aws_account_id.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          # Iniciar sesión en ECR
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
           
-          # Extraer la nueva imagen
-          echo "Extrayendo imagen: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}"
+          # Descargar y ejecutar la imagen
           docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
           
-          # Ejecutar el nuevo contenedor
-          echo "Ejecutando contenedor..."
           docker run -d \
             --name django-app \
             -p 8000:8000 \
+            -e DJANGO_SETTINGS_MODULE="excel_to_json.settings" \
             -e SECRET_KEY="${{ secrets.DJANGO_SECRET_KEY }}" \
             -e DEBUG=False \
             -e ALLOWED_HOSTS="${{ secrets.ALLOWED_HOSTS }}" \
-            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            -e DJANGO_SETTINGS_MODULE="excel_to_json.settings" \
             ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
           
-          echo "Despliegue completado"
-        ENDSSH
+          echo "Despliegue completado exitosamente"
+        EOF
