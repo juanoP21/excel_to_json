@@ -22,9 +22,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+SECRET_KEY = os.getenv('SECRET_KEY')
 if not SECRET_KEY:
-    raise ImproperlyConfigured("La variable de entorno DJANGO_SECRET_KEY no está definida")  # :contentReference[oaicite:0]{index=0}
+    raise ImproperlyConfigured("Falta la variable de entorno SECRET_KEY")
 
 # 3. DEBUG: por defecto False en producción, puede activarse con 'True'
 DEBUG = os.getenv('DJANGO_DEBUG', 'False') == 'True'  # :contentReference[oaicite:1]{index=1}
