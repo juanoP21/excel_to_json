@@ -218,5 +218,9 @@ class SAPConnectView(APIView):
         
         
 class testView(APIView):
-    def get(self, request, *args, **kwargs):
-        return Response({'message': 'Hello World!', 'request': str(request)}, status=status.HTTP_200_OK)
+    def post (self, request, *args, **kwargs):
+        # Verificar variables de entorno con os.getenv
+        Response(
+            {'message': 'Hello World!', 'data': request.data},
+            status=status.HTTP_200_OK
+        )
