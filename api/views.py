@@ -5,6 +5,16 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 import openpyxl
+import os
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+import requests
+from requests.exceptions import RequestException
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
 
 class ExcelToJsonView(APIView):
     """
@@ -151,3 +161,62 @@ class ExcelToJsonView(APIView):
             
             # Si todos los intentos fallan, relanzar la excepción original
             raise e
+        
+# tu_app/views.py
+
+
+class SAPConnectView(APIView):
+    def post(self, request, *args, **kwargs):
+        # Verificar variables de entorno con os.getenv
+        required = [
+            'B1_SERVER_ENV', 'B1_SLPORT_ENV', 'B1_SLPATH_ENV',
+            'B1_USER_ENV',   'B1_PASS_ENV',   'B1_COMP_ENV',
+        ]
+        missing = [v for v in required if not os.getenv(v)]
+        if missing:
+            return Response(
+                {'error': f'Faltan variables de entorno: {", ".join(missing)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        base = f"{os.getenv('B1_SERVER_ENV')}:{os.getenv('B1_SLPORT_ENV')}"
+        path = os.getenv('B1_SLPATH_ENV').rstrip('/') + '/Login'
+        url = f"{base}{path}"
+
+        payload = {
+            "UserName": os.getenv('B1_USER_ENV'),
+            "Password": os.getenv('B1_PASS_ENV'),
+            "CompanyDB": os.getenv('B1_COMP_ENV'),
+        }
+
+        try:
+            resp = requests.post(url, json=payload,
+                                 headers={'Content-Type': 'application/json'},
+                                 timeout=30, verify=False)
+            resp.raise_for_status()
+        except RequestException as e:
+            code = e.response.status_code if getattr(e, 'response', None) else 500
+            detail = getattr(e.response, 'text', str(e))
+            return Response(
+                {'error': 'Error conectando a SAP B1', 'details': detail},
+                status=code
+            )
+
+        data = resp.json()
+        if 'SessionId' not in data:
+            return Response({'error': 'No vino SessionId', 'raw': data},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({
+            'sessionId': data['SessionId'],
+            'cookies': resp.cookies.get_dict(),
+            'version': data.get('Version'),
+            'timeout': data.get('SessionTimeout'),
+            
+        }, status=status.HTTP_200_OK)
+        
+        
+        
+class testView(APIView):
+    def get(self, request, *args, **kwargs):
+        return Response({'message': 'Hello World!', 'request': str(request)}, status=status.HTTP_200_OK)
