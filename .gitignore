@@ -29,6 +29,7 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*__pycache__*
 
 # Virtualenv #
 venv/
