@@ -216,30 +216,3 @@ class SAPConnectView(APIView):
         }, status=status.HTTP_200_OK)
         
         
-        
-class TestView(APIView):
-    def post(self, request, *args, **kwargs):
-        # Get the JSON data from the request
-        try:
-            data = request.data
-            
-            # Check if data was received
-            if not data:
-                return Response(
-                    {'error': 'No JSON data received'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Optionally log or process the data
-            # print(f"Received data: {data}")
-            
-        except Exception as e:
-            return Response(
-                {'error': f'Error processing JSON: {str(e)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        return Response(
-            {'message': 'JSON data received successfully', 'data': data},
-            status=status.HTTP_200_OK
-            
-        )
