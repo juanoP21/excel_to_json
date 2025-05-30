@@ -54,7 +54,6 @@ def parse_bancolombia(text: str) -> dict:
                 block.append(lines[i]); i += 1
             if not block:
                 continue
-
             # 4) Extraer valor
             raw_val, j = "", None
             for k in range(len(block)-1, -1, -1):
