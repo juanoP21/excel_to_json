@@ -1,4 +1,3 @@
-# pdfconvert/views.py
 
 from rest_framework.views   import APIView
 from rest_framework.response import Response
@@ -7,7 +6,6 @@ from rest_framework          import status
 from pdfconvert.parsers.plaintext import PlainTextParser
 from pdfconvert.registry          import get_handler
 
-# pdfconvert/views.py
 
 class PDFConvertView(APIView):
     parser_classes = [PlainTextParser]
@@ -34,13 +32,13 @@ class PDFConvertView(APIView):
             )
 
         print(">>> PAYLOAD HEADERS:", {k: payload.get(k) for k in [
-            "empresa","numero_cuenta","fecha_hora_actual","nit","tipo_cuenta"
+            "empresa", "numero_cuenta", "fecha_hora_actual", "nit", "tipo_cuenta"
         ]})
         print(">>> RAW MOVIMIENTOS COUNT:", len(payload.get("movimientos", [])))
 
         serializer = handler["serializer"](data=payload)
         if serializer.is_valid():
-            return Response(serializer.validated_data, status=status.HTTP_200_OK)
+            return Response(payload, status=status.HTTP_200_OK)
 
         print(">>> SERIALIZER ERRORS:", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

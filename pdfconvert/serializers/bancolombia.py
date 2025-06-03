@@ -23,3 +23,16 @@ class BancolombiaSerializer(serializers.Serializer):
     saldo_canje_actual    = serializers.DecimalField(max_digits=18, decimal_places=2)
     saldo_total_actual    = serializers.DecimalField(max_digits=18, decimal_places=2)
     movimientos           = MovimientoSerializer(many=True)
+
+class BancolombiaFlexibleSerializer(serializers.Serializer):
+    empresa               = serializers.CharField(required=False, allow_blank=True)
+    numero_cuenta         = serializers.CharField(required=False, allow_blank=True)
+    fecha_hora_actual     = serializers.CharField(required=False, allow_blank=True)
+    nit                   = serializers.CharField(required=False, allow_blank=True)
+    tipo_cuenta           = serializers.CharField(required=False, allow_blank=True)
+    fecha_hora_consulta   = serializers.CharField(required=False, allow_blank=True)
+    impreso_por           = serializers.CharField(required=False, allow_blank=True)
+    saldo_efectivo_actual = serializers.CharField(required=False, allow_blank=True)
+    saldo_canje_actual    = serializers.CharField(required=False, allow_blank=True)
+    saldo_total_actual    = serializers.CharField(required=False, allow_blank=True)
+    movimientos           = serializers.ListField(required=False)
