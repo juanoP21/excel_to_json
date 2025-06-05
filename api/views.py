@@ -1,3 +1,6 @@
++15
+-16
+
 import os
 import pandas as pd
 from rest_framework.views import APIView
@@ -5,13 +8,15 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status
 
+from .banks.registry import get_processor
+
 class ExcelToJsonView(APIView):
     """
-    Convierte .xlsx, .xls o .csv a JSON, con lógica especial para ramas:
-      - 'occidente'
-      - 'popular'
+    Convierte .xlsx, .xls o .csv a JSON.
+    Si se envía el parámetro ``branch`` se buscará un procesador
+    específico para ese banco, registrado en ``api.banks.registry``.
     Parámetros opcionales (form-data/body):
-      - branch: 'occidente' o 'popular' (para activar lógica de cada rama)
+      - branch: clave del banco para activar la lógica específica
       - worksheet: nombre o índice de hoja
       - header_row: índice de la fila de encabezado (por defecto 0)
       - skip_rows: número de filas a omitir al inicio
@@ -38,16 +43,14 @@ class ExcelToJsonView(APIView):
         remove_unnamed = request.data.get('remove_unnamed', 'true').lower() == 'true'
 
         try:
-            # Lógica de ramas
-            if branch == 'occidente':
-                # TODO: implementar lógica específica de 'occidente'
-                pass
-            elif branch == 'popular':
-                # TODO: implementar lógica específica de 'popular'
-                pass
-
-            # Lectura y limpieza
+            # Leer el archivo
             df = self._read_file(excel_file, ext, sheet, header, skip)
+
+            # Aplicar procesamiento específico del banco si existe
+            processor = get_processor(branch)
+            if processor:
+                df = processor(df)
+
             if remove_unnamed:
                 df = df.loc[:, ~df.columns.str.contains(r'^Unnamed')]
             df.dropna(how='all', inplace=True)
@@ -56,9 +59,8 @@ class ExcelToJsonView(APIView):
 
             # Respuesta JSON
             records = df.to_dict(orient='records')
-            return Response({
-                'data': records,
-            }, status=status.HTTP_200_OK)
+            key = 'movimientos' if branch == 'occidente' else 'data'
+            return Response({key: records}, status=status.HTTP_200_OK)
 
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
