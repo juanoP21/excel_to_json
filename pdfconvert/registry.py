@@ -6,6 +6,11 @@ from pdfconvert.utils.parse_davivienda import (
     parse_davivienda,
     parse_davivienda_transformado,
 )
+from pdfconvert.parsers.bogota import ParserBogota
+from pdfconvert.utils.parse_bogota import (
+    parse_bogota,
+    parse_bogota_transformado,
+)
 
 HANDLERS = {
     'bancolombia': {
@@ -22,6 +27,14 @@ HANDLERS = {
     },
     'davivienda_transformado': {
         'parser':    ParserDavivienda(parse_func=parse_davivienda_transformado),
+        'serializer': None,
+    },
+    'bogota': {
+        'parser':    ParserBogota(parse_func=parse_bogota),
+        'serializer': None,
+    },
+    'bogota_transformado': {
+        'parser':    ParserBogota(parse_func=parse_bogota_transformado),
         'serializer': None,
     },
 }
