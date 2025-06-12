@@ -44,7 +44,7 @@ def parse_bancolombia(text: str) -> dict:
     date_re = re.compile(r'^\d{4}/\d{2}/\d{2}$')
     fullnum_re = re.compile(r'^-?[\d,]+\.\d+$')
     tail_re = re.compile(r'^(.+?)\s+(-?[\d,]+\.\d+)$')
-    ops_re = re.compile(r'(TRANSFERENCIA|REDESCONSIGNACION|CONSIGNACION|IMPTO|VALOR|COMIS|INTERESES|ABONO|DEPÓSITO|DEPOSITO|RETIRO|PAGO|CONSIG|RECAUDO)', re.IGNORECASE)
+    ops_re = re.compile(r'(TRANSFERENCIA|REDESCONSIGNACION|CONSIGNACION|IMPTO|VALOR|COMIS|INTERESES|ABONO|DEPÓSITO|DEPOSITO|RETIRO|PAGO|CONSIG|RECAUDO|TRASL)', re.IGNORECASE)
     ref_pattern = re.compile(r'^\*?\d{3,18}$')
 
     movimientos = []
