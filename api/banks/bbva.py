@@ -35,15 +35,17 @@ def _parse_row(row: pd.Series, fecha_col: str) -> dict:
     observaciones = "" if pd.isna(obs_raw) else str(obs_raw).strip()
 
     lower_concepto = concepto.lower()
+    amount_str = f"{abs(importe):.2f}" if importe else "0"
+
     if "retiro" in lower_concepto or "rete fuente" in lower_concepto or importe < 0:
-        credito = ""
-        debito = f"{abs(importe):.2f}" if importe else ""
+        credito = "0"
+        debito = amount_str
     elif "deposito" in lower_concepto or importe > 0:
-        credito = f"{abs(importe):.2f}" if importe else ""
-        debito = ""
+        credito = amount_str
+        debito = "0"
     else:
-        credito = ""
-        debito = ""
+        credito = "0"
+        debito = "0"
 
     return {
         "Fecha": fecha_formatted,
