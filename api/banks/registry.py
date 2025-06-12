@@ -1,12 +1,13 @@
 from typing import Callable, Dict
 import pandas as pd
 
-from . import occidente, popular, agrario
+from . import occidente, popular, agrario, alianza
 
 HANDLERS: Dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
     'occidente': occidente.process,
     'popular': popular.process,
     'agrario': agrario.process,
+    'alianza': alianza.process, 
 }
 
 

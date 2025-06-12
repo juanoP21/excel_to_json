@@ -59,7 +59,7 @@ class ExcelToJsonView(APIView):
 
             # Respuesta JSON
             records = df.to_dict(orient='records')
-            key = 'movimientos' if branch in ('occidente', 'agrario') else 'data'
+            key = 'movimientos' if branch in ('occidente', 'agrario','alianza') else 'data'
             return Response({key: records}, status=status.HTTP_200_OK)
 
         except Exception as e:
