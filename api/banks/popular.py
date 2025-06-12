@@ -40,10 +40,10 @@ def _parse_row(row: pd.Series, desc_col: str) -> dict:
     descripcion = str(row.get(desc_col, "")).strip()
     descripcion = descripcion.replace("0", "").strip()
 
+    fecha_dt = pd.to_datetime(fecha, dayfirst=True, errors="coerce")
+    fecha_formatted = fecha_dt.strftime("%m/%d/%Y") if fecha_dt is not pd.NaT else ""
     return {
-        "Fecha": pd.to_datetime(fecha, dayfirst=True, errors="coerce").strftime(
-            "%d/%m/%Y"
-        ),
+        "Fecha": fecha_formatted,
         "importe_credito": credito,
         "importe_debito": debito,
         "referencia": referencia,
