@@ -35,8 +35,12 @@ class PDFConvertView(APIView):
             "empresa", "numero_cuenta", "fecha_hora_actual", "nit", "tipo_cuenta"
         ]})
         print(">>> RAW MOVIMIENTOS COUNT:", len(payload.get("movimientos", [])))
+        serializer_class = handler.get("serializer")
+        if serializer_class is None:
+            # Si no hay serializer definido, devolvemos el payload directamente
+            return Response(payload, status=status.HTTP_200_OK)
 
-        serializer = handler["serializer"](data=payload)
+        serializer = serializer_class(data=payload)
         if serializer.is_valid():
             return Response(payload, status=status.HTTP_200_OK)
 
