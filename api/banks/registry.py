@@ -1,14 +1,15 @@
 from typing import Callable, Dict
 import pandas as pd
 
-from . import occidente, popular, agrario, alianza, bbva
+from . import occidente, popular, agrario, alianza, bbva,avvillas
 
 HANDLERS: Dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
     'occidente': occidente.process,
     'popular': popular.process,
     'agrario': agrario.process,
     'alianza': alianza.process, 
-    'bbva': bbva.process,}
+    'bbva': bbva.process,
+    'avvillas': avvillas.process,}
 
 
 def get_processor(bank: str) -> Callable[[pd.DataFrame], pd.DataFrame] | None:
