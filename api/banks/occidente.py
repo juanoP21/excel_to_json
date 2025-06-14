@@ -11,7 +11,10 @@ def _parse_row(row: pd.Series) -> dict:
     debito = str(row.get("Débitos", "")).strip()
     credito = str(row.get("Créditos", "")).strip()
 
-    referencia = str(row.get("Nro. Documento", "")).strip()
+    raw_referencia = row.get("Nro. Documento", "")
+    referencia = "" if pd.isna(raw_referencia) else str(raw_referencia).strip()
+    if referencia.lower() == "nan":
+        referencia = ""
     transaccion = str(row.get("Transacción", "")).strip()
 
     # If "Nro. Documento" is empty try to extract it from the end of
@@ -29,7 +32,7 @@ def _parse_row(row: pd.Series) -> dict:
         referencia = ""
 
     return {
-        "Fecha": pd.to_datetime(fecha, dayfirst=True, errors="coerce").strftime("%d/%m/%Y"), "importe_credito": credito,
+        "Fecha": pd.to_datetime(fecha, dayfirst=True, errors="coerce").strftime("%m/%d/%Y"), "importe_credito": credito,
         "importe_debito": debito,
         "referencia": referencia,
         "Info_detallada": transaccion,
