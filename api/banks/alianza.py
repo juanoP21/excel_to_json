@@ -9,7 +9,7 @@ def _parse_row(row: pd.Series) -> list[dict]:
     fecha_raw = "" if pd.isna(fecha_raw) else str(fecha_raw).strip()
     try:
         fecha = pd.to_datetime(fecha_raw, dayfirst=True, errors="coerce")
-        fecha = fecha.strftime("%d/%m/%Y") if fecha is not pd.NaT else ""
+        fecha = fecha.strftime("%m/%d/%Y") if fecha is not pd.NaT else ""
     except Exception:
         fecha = ""
 
