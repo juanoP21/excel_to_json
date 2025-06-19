@@ -11,6 +11,11 @@ from pdfconvert.utils.parse_bogota import (
     parse_bogota,
     parse_bogota_transformado,
 )
+from pdfconvert.parsers.casa_bolsa import ParserCasaBolsa
+from pdfconvert.utils.parse_casa_bolsa import (
+    parse_casa_bolsa,
+    parse_casa_bolsa_transformado,
+)
 
 HANDLERS = {
     'bancolombia': {
@@ -35,6 +40,13 @@ HANDLERS = {
     },
     'bogota_transformado': {
         'parser':    ParserBogota(parse_func=parse_bogota_transformado),
+        'serializer': None,
+    },'casa_bolsa': {
+        'parser':    ParserCasaBolsa(parse_func=parse_casa_bolsa),
+        'serializer': None,
+    },
+    'casa_bolsa_transformado': {
+        'parser':    ParserCasaBolsa(parse_func=parse_casa_bolsa_transformado),
         'serializer': None,
     },
 }
