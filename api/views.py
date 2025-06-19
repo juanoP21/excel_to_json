@@ -11,17 +11,7 @@ from rest_framework import status
 from .banks.registry import get_processor
 
 class ExcelToJsonView(APIView):
-    """
-    Convierte .xlsx, .xls o .csv a JSON.
-    Si se envía el parámetro ``branch`` se buscará un procesador
-    específico para ese banco, registrado en ``api.banks.registry``.
-    Parámetros opcionales (form-data/body):
-      - branch: clave del banco para activar la lógica específica
-      - worksheet: nombre o índice de hoja
-      - header_row: índice de la fila de encabezado (por defecto 0)
-      - skip_rows: número de filas a omitir al inicio
-      - remove_unnamed: 'true'/'false' (por defecto 'true')
-    """
+  
     parser_classes = (MultiPartParser, FormParser)
 
     def post(self, request, *args, **kwargs):
