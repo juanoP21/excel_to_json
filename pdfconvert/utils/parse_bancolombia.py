@@ -41,7 +41,7 @@ def parse_bancolombia(text: str) -> dict:
 
     start = next((i+1 for i, l in enumerate(lines) if l.upper().startswith("FECHA")), len(lines))
 
-    date_re = re.compile(r'^(\d{4}/\d{2}/\d{2})(?:\s|$)')   
+    date_re = re.compile(r'^(\d{4}/\d{2}/\d{2})(?:\s|$)')
     fullnum_re = re.compile(r'^-?[\d,]+\.\d+$')
     tail_re = re.compile(r'^(.+?)\s+(-?[\d,]+\.\d+)$')
     ops_re = re.compile(r'(TRANSFERENCIA|REDESCONSIGNACION|CONSIGNACION|IMPTO|VALOR|COMIS|INTERESES|ABONO|DEPÓSITO|DEPOSITO|RETIRO|PAGO|CONSIG|RECAUDO|TRASL)', re.IGNORECASE)
@@ -57,7 +57,6 @@ def parse_bancolombia(text: str) -> dict:
             rest_line = lines[i][m_date.end():].strip()
             if rest_line:
                 block.append(rest_line)
-            block = []
             i += 1
             while i < len(lines) and not date_re.match(lines[i]):
                 block.append(lines[i])
@@ -73,6 +72,7 @@ def parse_bancolombia(text: str) -> dict:
                 if m:
                     raw_val, j = m.group(2).replace(',', ''), k
                     block[k] = m.group(1).strip()
+                    j += 1
                     break
             if j is None:
                 j = len(block)
@@ -89,12 +89,34 @@ def parse_bancolombia(text: str) -> dict:
             raw_desc = " ".join(raw_desc_parts) if raw_desc_parts else ""
             ref_lines = block[k_desc:j]
 
-            if 'NEQUI' in raw_desc.upper() and ref_lines:
-                idx_n = raw_desc.upper().find('NEQUI')
-                nombre = raw_desc[idx_n + len('NEQUI'):].strip()
-                partes = [p.strip() for p in ([nombre] if nombre else []) + ref_lines]
-                referencia1 = ' '.join(partes)
-                referencia2 = ""
+            raw_desc_upper = raw_desc.upper()
+            if 'NEQUI' in raw_desc_upper:
+                base_line = raw_desc_parts[0] if raw_desc_parts else ''
+                idx_n = base_line.upper().find('NEQUI')
+                descripcion = base_line[: idx_n + len('NEQUI')].strip()
+
+                branch = raw_desc_parts[1].strip() if len(raw_desc_parts) > 1 else ''
+
+                after_nequi = base_line[idx_n + len('NEQUI'):].strip()
+                tokens = after_nequi.split()
+                ref_num = tokens.pop() if tokens and tokens[-1].isdigit() else ''
+                if len(tokens) >= 2:
+                    branch = ' '.join(tokens[-2:])
+                    name = ' '.join(tokens[:-2])
+                else:
+                    name = ' '.join(tokens)
+                extra_names = [p.strip() for p in raw_desc_parts[1:]] if len(raw_desc_parts) > 1 else []
+                if extra_names:
+                    branch = branch or extra_names[0]
+                    if len(extra_names) > 1:
+                        name = name + ' ' + ' '.join(extra_names[1:]) if name else ' '.join(extra_names[1:])
+                ref_parts = [name]
+                if ref_num:
+                    ref_parts.append(ref_num)
+                ref_parts.extend(p.strip() for p in ref_lines)
+                referencia1 = ' '.join(p for p in ref_parts if p).strip()
+                referencia2 = ''
+                sucursal_canal = branch
             else:
                 refs = []
                 for lr in ref_lines:
@@ -114,25 +136,24 @@ def parse_bancolombia(text: str) -> dict:
                 referencia1 = refs[0] if refs else ""
                 referencia2 = refs[1] if len(refs) > 1 else ""
 
-            up = raw_desc.upper()
-            if up.startswith('CNB'):
-                sucursal_canal = 'CNB REDES'
-                desc = raw_desc[len('CNB'):].strip()
-                desc = re.sub(r'(?i)^REDESCONSIG', 'CONSIG', desc)
-                descripcion = re.sub(r'\*?\d+', '', desc).strip()
-            else:
-                rest = re.sub(r'\*?\d+', '', raw_desc).strip()
-                m = ops_re.search(rest)
-                if m:
-                    pref, suf = rest[:m.start()].strip(), rest[m.start():].strip()
-                    if pref.upper().endswith('IVA'):
-                        sucursal_canal = pref[:-3].strip()
-                        descripcion = 'IVA ' + suf
-                    else:
-                        sucursal_canal = pref
-                        descripcion = suf
+                if raw_desc_upper.startswith('CNB'):
+                    sucursal_canal = 'CNB REDES'
+                    desc = raw_desc[len('CNB'):].strip()
+                    desc = re.sub(r'(?i)^REDESCONSIG', 'CONSIG', desc)
+                    descripcion = re.sub(r'\*?\d+', '', desc).strip()
                 else:
-                    sucursal_canal, descripcion = '', rest
+                    rest = re.sub(r'\*?\d+', '', raw_desc).strip()
+                    m = ops_re.search(rest)
+                    if m:
+                        pref, suf = rest[:m.start()].strip(), rest[m.start():].strip()
+                        if pref.upper().endswith('IVA'):
+                            sucursal_canal = pref[:-3].strip()
+                            descripcion = 'IVA ' + suf
+                        else:
+                            sucursal_canal = pref
+                            descripcion = suf
+                    else:
+                        sucursal_canal, descripcion = '', rest
 
             try:
                 fecha_iso = datetime.strptime(raw_fecha, '%Y/%m/%d').date().isoformat()
