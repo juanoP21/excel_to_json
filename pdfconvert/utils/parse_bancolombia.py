@@ -41,7 +41,7 @@ def parse_bancolombia(text: str) -> dict:
 
     start = next((i+1 for i, l in enumerate(lines) if l.upper().startswith("FECHA")), len(lines))
 
-    date_re = re.compile(r'^\d{4}/\d{2}/\d{2}$')
+    date_re = re.compile(r'^(\d{4}/\d{2}/\d{2})(?:\s|$)')   
     fullnum_re = re.compile(r'^-?[\d,]+\.\d+$')
     tail_re = re.compile(r'^(.+?)\s+(-?[\d,]+\.\d+)$')
     ops_re = re.compile(r'(TRANSFERENCIA|REDESCONSIGNACION|CONSIGNACION|IMPTO|VALOR|COMIS|INTERESES|ABONO|DEPÓSITO|DEPOSITO|RETIRO|PAGO|CONSIG|RECAUDO|TRASL)', re.IGNORECASE)
@@ -50,8 +50,13 @@ def parse_bancolombia(text: str) -> dict:
     movimientos = []
     i = start
     while i < len(lines):
-        if date_re.match(lines[i]):
-            raw_fecha = lines[i]
+        m_date = date_re.match(lines[i])
+        if m_date:
+            raw_fecha = m_date.group(1)
+            block = []
+            rest_line = lines[i][m_date.end():].strip()
+            if rest_line:
+                block.append(rest_line)
             block = []
             i += 1
             while i < len(lines) and not date_re.match(lines[i]):
@@ -72,8 +77,17 @@ def parse_bancolombia(text: str) -> dict:
             if j is None:
                 j = len(block)
 
-            raw_desc = block[0]
-            ref_lines = block[1:j]
+            raw_desc_parts = []
+            k_desc = 0
+            while k_desc < j:
+                line = block[k_desc]
+                if k_desc > 0 and re.search(r'\d', line):
+                    break
+                raw_desc_parts.append(line)
+                k_desc += 1
+
+            raw_desc = " ".join(raw_desc_parts) if raw_desc_parts else ""
+            ref_lines = block[k_desc:j]
 
             if 'NEQUI' in raw_desc.upper() and ref_lines:
                 idx_n = raw_desc.upper().find('NEQUI')
