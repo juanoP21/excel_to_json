@@ -41,7 +41,7 @@ def parse_bancolombia(text: str) -> dict:
 
     start = next((i+1 for i, l in enumerate(lines) if l.upper().startswith("FECHA")), len(lines))
 
-    date_re = re.compile(r'^(\d{4}/\d{2}/\d{2})(?:\s|$)')
+    date_re = re.compile(r'^\d{4}/\d{2}/\d{2}$')
     fullnum_re = re.compile(r'^-?[\d,]+\.\d+$')
     tail_re = re.compile(r'^(.+?)\s+(-?[\d,]+\.\d+)$')
     ops_re = re.compile(r'(TRANSFERENCIA|REDESCONSIGNACION|CONSIGNACION|IMPTO|VALOR|COMIS|INTERESES|ABONO|DEPÓSITO|DEPOSITO|RETIRO|PAGO|CONSIG|RECAUDO|TRASL)', re.IGNORECASE)
@@ -50,13 +50,9 @@ def parse_bancolombia(text: str) -> dict:
     movimientos = []
     i = start
     while i < len(lines):
-        m_date = date_re.match(lines[i])
-        if m_date:
-            raw_fecha = m_date.group(1)
+        if date_re.match(lines[i]):
+            raw_fecha = lines[i]
             block = []
-            rest_line = lines[i][m_date.end():].strip()
-            if rest_line:
-                block.append(rest_line)
             i += 1
             while i < len(lines) and not date_re.match(lines[i]):
                 block.append(lines[i])
@@ -72,51 +68,19 @@ def parse_bancolombia(text: str) -> dict:
                 if m:
                     raw_val, j = m.group(2).replace(',', ''), k
                     block[k] = m.group(1).strip()
-                    j += 1
                     break
             if j is None:
                 j = len(block)
 
-            raw_desc_parts = []
-            k_desc = 0
-            while k_desc < j:
-                line = block[k_desc]
-                if k_desc > 0 and re.search(r'\d', line):
-                    break
-                raw_desc_parts.append(line)
-                k_desc += 1
+            raw_desc = block[0]
+            ref_lines = block[1:j]
 
-            raw_desc = " ".join(raw_desc_parts) if raw_desc_parts else ""
-            ref_lines = block[k_desc:j]
-
-            raw_desc_upper = raw_desc.upper()
-            if 'NEQUI' in raw_desc_upper:
-                base_line = raw_desc_parts[0] if raw_desc_parts else ''
-                idx_n = base_line.upper().find('NEQUI')
-                descripcion = base_line[: idx_n + len('NEQUI')].strip()
-
-                branch = raw_desc_parts[1].strip() if len(raw_desc_parts) > 1 else ''
-
-                after_nequi = base_line[idx_n + len('NEQUI'):].strip()
-                tokens = after_nequi.split()
-                ref_num = tokens.pop() if tokens and tokens[-1].isdigit() else ''
-                if len(tokens) >= 2:
-                    branch = ' '.join(tokens[-2:])
-                    name = ' '.join(tokens[:-2])
-                else:
-                    name = ' '.join(tokens)
-                extra_names = [p.strip() for p in raw_desc_parts[1:]] if len(raw_desc_parts) > 1 else []
-                if extra_names:
-                    branch = branch or extra_names[0]
-                    if len(extra_names) > 1:
-                        name = name + ' ' + ' '.join(extra_names[1:]) if name else ' '.join(extra_names[1:])
-                ref_parts = [name]
-                if ref_num:
-                    ref_parts.append(ref_num)
-                ref_parts.extend(p.strip() for p in ref_lines)
-                referencia1 = ' '.join(p for p in ref_parts if p).strip()
-                referencia2 = ''
-                sucursal_canal = branch
+            if 'NEQUI' in raw_desc.upper() and ref_lines:
+                idx_n = raw_desc.upper().find('NEQUI')
+                nombre = raw_desc[idx_n + len('NEQUI'):].strip()
+                partes = [nombre] + ref_lines
+                referencia1 = '\n'.join(partes)
+                referencia2 = ""
             else:
                 refs = []
                 for lr in ref_lines:
@@ -136,24 +100,25 @@ def parse_bancolombia(text: str) -> dict:
                 referencia1 = refs[0] if refs else ""
                 referencia2 = refs[1] if len(refs) > 1 else ""
 
-                if raw_desc_upper.startswith('CNB'):
-                    sucursal_canal = 'CNB REDES'
-                    desc = raw_desc[len('CNB'):].strip()
-                    desc = re.sub(r'(?i)^REDESCONSIG', 'CONSIG', desc)
-                    descripcion = re.sub(r'\*?\d+', '', desc).strip()
-                else:
-                    rest = re.sub(r'\*?\d+', '', raw_desc).strip()
-                    m = ops_re.search(rest)
-                    if m:
-                        pref, suf = rest[:m.start()].strip(), rest[m.start():].strip()
-                        if pref.upper().endswith('IVA'):
-                            sucursal_canal = pref[:-3].strip()
-                            descripcion = 'IVA ' + suf
-                        else:
-                            sucursal_canal = pref
-                            descripcion = suf
+            up = raw_desc.upper()
+            if up.startswith('CNB'):
+                sucursal_canal = 'CNB REDES'
+                desc = raw_desc[len('CNB'):].strip()
+                desc = re.sub(r'(?i)^REDESCONSIG', 'CONSIG', desc)
+                descripcion = re.sub(r'\*?\d+', '', desc).strip()
+            else:
+                rest = re.sub(r'\*?\d+', '', raw_desc).strip()
+                m = ops_re.search(rest)
+                if m:
+                    pref, suf = rest[:m.start()].strip(), rest[m.start():].strip()
+                    if pref.upper().endswith('IVA'):
+                        sucursal_canal = pref[:-3].strip()
+                        descripcion = 'IVA ' + suf
                     else:
-                        sucursal_canal, descripcion = '', rest
+                        sucursal_canal = pref
+                        descripcion = suf
+                else:
+                    sucursal_canal, descripcion = '', rest
 
             try:
                 fecha_iso = datetime.strptime(raw_fecha, '%Y/%m/%d').date().isoformat()
@@ -177,13 +142,7 @@ def parse_bancolombia(text: str) -> dict:
     return data
 def parse_bancolombia_transformado(data: dict) -> dict:
     print(f"Procesando {len(data)} movimientos...")
-    movimientos = sorted(
-        data,
-        key=lambda m: (
-            datetime.fromisoformat(m.get('fecha'))
-            if isinstance(m.get('fecha'), str) else datetime.max
-        ),
-    )
+    movimientos = data
     resultado = []
 
     for mov in movimientos:
