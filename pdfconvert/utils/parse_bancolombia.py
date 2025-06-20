@@ -78,8 +78,8 @@ def parse_bancolombia(text: str) -> dict:
             if 'NEQUI' in raw_desc.upper() and ref_lines:
                 idx_n = raw_desc.upper().find('NEQUI')
                 nombre = raw_desc[idx_n + len('NEQUI'):].strip()
-                partes = [nombre] + ref_lines
-                referencia1 = '\n'.join(partes)
+                partes = [p.strip() for p in ([nombre] if nombre else []) + ref_lines]
+                referencia1 = ' '.join(partes)
                 referencia2 = ""
             else:
                 refs = []
@@ -142,7 +142,13 @@ def parse_bancolombia(text: str) -> dict:
     return data
 def parse_bancolombia_transformado(data: dict) -> dict:
     print(f"Procesando {len(data)} movimientos...")
-    movimientos = data
+    movimientos = sorted(
+        data,
+        key=lambda m: (
+            datetime.fromisoformat(m.get('fecha'))
+            if isinstance(m.get('fecha'), str) else datetime.max
+        ),
+    )
     resultado = []
 
     for mov in movimientos:

@@ -49,7 +49,7 @@ class ExcelToJsonView(APIView):
 
             # Respuesta JSON
             records = df.to_dict(orient='records')
-            key = 'movimientos' if branch in ('occidente', 'agrario','alianza','bbva','avvillas') else 'data'
+            key = 'movimientos' if branch in ('occidente', 'agrario','alianza','bbva','avvillas','itau') else 'data'
             return Response({key: records}, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -58,9 +58,14 @@ class ExcelToJsonView(APIView):
     def _read_file(self, file, ext, sheet, header, skip):
         if ext == '.csv':
             return pd.read_csv(file, header=header, skiprows=skip)
+        engine = 'openpyxl'
+        if ext == '.xls':
+            engine = 'xlrd'
+            return pd.read_csv(file, header=header, skiprows=skip)
         return pd.read_excel(
             file,
             sheet_name=(int(sheet) if sheet and sheet.isdigit() else sheet),
             header=header,
-            skiprows=skip
+            skiprows=skip,
+            engine=engine,
         )
