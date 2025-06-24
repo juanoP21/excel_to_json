@@ -61,7 +61,6 @@ class ExcelToJsonView(APIView):
         engine = 'openpyxl'
         if ext == '.xls':
             engine = 'xlrd'
-            return pd.read_csv(file, header=header, skiprows=skip)
         return pd.read_excel(
             file,
             sheet_name=(int(sheet) if sheet and sheet.isdigit() else sheet),
