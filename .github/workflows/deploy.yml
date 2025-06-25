@@ -52,16 +52,15 @@ jobs:
           docker rm django-app || true
           
           # Iniciar sesión en ECR
-          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
           
-          # Descargar la imagen nueva
-          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
-
           # Crear archivo .env con variables desde GitHub Secret
           echo "${{ secrets.TEXTRACT_S3_BUCKET }}" > /home/ec2-user/.env
           chmod 600 /home/ec2-user/.env
 
-          # Ejecutar el contenedor con el archivo .env
+          # Descargar y ejecutar la imagen
+          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
+          
           docker run -d \
             --name django-app \
             --env-file /home/ec2-user/.env \
@@ -71,6 +70,6 @@ jobs:
             -e DEBUG=False \
             -e ALLOWED_HOSTS="${{ secrets.ALLOWED_HOSTS }}" \
             ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
-
+          
           echo "Despliegue completado exitosamente"
         EOF
