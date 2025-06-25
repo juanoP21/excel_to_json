@@ -33,8 +33,8 @@ HANDLERS = {
         'serializer': None,
     },
     'bancolombia_textract': {
-        'parser':    TextractParser(parse_func=parse_bancolombia),
-        'serializer': BancolombiaSerializer,
+        'parser':    TextractParser(parse_func=parse_bancolombia_transformado),
+        'serializer': None,
     },
     'davivienda_transformado': {
         'parser':    ParserDavivienda(parse_func=parse_davivienda_transformado),
