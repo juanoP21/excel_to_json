@@ -42,29 +42,30 @@ jobs:
     - name: Deploy via SSH
       run: |
         ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-          # Exportar variables AWS para autenticación
           export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
           export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
           export AWS_REGION="${{ secrets.AWS_REGION }}"
           
-          # Detener contenedor existente si existe
+          # Escribir el archivo .env con el contenido del secreto
+          echo "${{ secrets.ENV_FILE_CONTENTS }}" > /home/ec2-user/.env
+          chmod 600 /home/ec2-user/.env
+          
+          # Detener y eliminar contenedor existente
           docker stop django-app || true
           docker rm django-app || true
           
-          # Iniciar sesión en ECR
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+          # Login a ECR
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
           
-          # Descargar y ejecutar la imagen
+          # Pull de la nueva imagen
           docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
           
+          # Ejecutar el contenedor con el archivo .env
           docker run -d \
             --name django-app \
+            --env-file /home/ec2-user/.env \
             -p 8000:8000 \
-            -e DJANGO_SETTINGS_MODULE="excel_to_json.settings" \
-            -e SECRET_KEY="${{ secrets.DJANGO_SECRET_KEY }}" \
-            -e DEBUG=False \
-            -e ALLOWED_HOSTS="${{ secrets.ALLOWED_HOSTS }}" \
             ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
-          
+
           echo "Despliegue completado exitosamente"
         EOF
