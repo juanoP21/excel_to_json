@@ -1,6 +1,3 @@
-+15
--16
-
 import os
 import pandas as pd
 from rest_framework.views import APIView

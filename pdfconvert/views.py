@@ -5,6 +5,7 @@ from rest_framework          import status
 
 from pdfconvert.parsers.plaintext import PlainTextParser
 from pdfconvert.registry          import get_handler
+from rest_framework.parsers import MultiPartParser
 
 
 class PDFConvertView(APIView):
@@ -45,4 +46,42 @@ class PDFConvertView(APIView):
             return Response(payload, status=status.HTTP_200_OK)
 
         print(">>> SERIALIZER ERRORS:", serializer.errors)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class PDFTextractView(APIView):
+    """View to handle PDF uploads processed with Amazon Textract."""
+    parser_classes = [MultiPartParser]
+
+    def post(self, request, bank_key, *args, **kwargs):
+        handler = get_handler(bank_key)
+        print(">>> HANDLER:", handler)
+        if not handler:
+            return Response(
+                {"error": f'Banco "{bank_key}" no soportado.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        file = request.FILES.get('file')
+        if not file:
+            return Response(
+                {"error": "Archivo no proporcionado", "detail": "Se requiere el campo 'file'"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            payload = handler["parser"].parse(file)
+        except Exception as e:
+            print(">>> TEXTRACT PARSE ERROR:", str(e))
+            return Response(
+                {"error": "Error al procesar el archivo", "detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer_class = handler.get("serializer")
+        if serializer_class is None:
+            return Response(payload, status=status.HTTP_200_OK)
+
+        serializer = serializer_class(data=payload)
+        if serializer.is_valid():
+            return Response(payload, status=status.HTTP_200_OK)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
