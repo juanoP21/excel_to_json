@@ -58,7 +58,7 @@ jobs:
           docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
 
           # Crear archivo .env con variables desde GitHub Secret
-          echo "${{ secrets.ENV_FILE_CONTENTS }}" > /home/ec2-user/.env
+          echo "${{ secrets.TEXTRACT_S3_BUCKET }}" > /home/ec2-user/.env
           chmod 600 /home/ec2-user/.env
 
           # Ejecutar el contenedor con el archivo .env
