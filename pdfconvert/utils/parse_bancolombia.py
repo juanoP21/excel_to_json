@@ -169,7 +169,15 @@ def parse_bancolombia_transformado(data: dict) -> dict:
                 referencia = refs[0]
             else:
                 referencia = ""
-
+        raw_val = str(mov.get('valor', 0))
+        clean_val = raw_val.replace(',', '').replace(' ', '')
+        try:
+            val = float(clean_val)
+        except Exception:
+            try:
+                val = float(clean_val.replace('.', '').replace(',', '.'))
+            except Exception:
+                val = 0.0
         try:
             val = float(mov.get('valor', 0))
         except Exception:

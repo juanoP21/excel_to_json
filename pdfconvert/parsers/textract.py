@@ -74,7 +74,49 @@ class TextractParser:
                     ordered.append(row)
                 tables.append(ordered)
         return tables
+    def _merge_rows(self, rows):
+        """Merge rows that belong to the same transaction when a line break
+        causes a row to be split across multiple lines."""
 
+        merged: list[dict] = []
+        current: dict | None = None
+
+        def _is_number(val: str) -> bool:
+            try:
+                float(val.replace(",", ""))
+                return True
+            except Exception:
+                return False
+
+        for row in rows:
+            fecha = row.get("fecha", "").strip()
+            valor = row.get("valor", "").strip()
+            print(">>> Processing row:", row)
+            continuation = (
+                not fecha
+                and (not valor or not _is_number(valor))
+                and any(row.get(k) for k in ("descripcion", "sucursal_canal", "referencia1", "referencia2", "documento"))
+            )
+
+            if current is not None and continuation:
+                for k, v in row.items():
+                    if not v:
+                        continue
+                    if k in {"descripcion", "sucursal_canal", "referencia1", "referencia2", "documento"}:
+                        cur_val = current.get(k, "")
+                        current[k] = f"{cur_val} {v}".strip() if cur_val else v
+                    elif k == "valor" and not current.get(k):
+                        current[k] = v
+                continue
+
+            if current is not None:
+                merged.append(current)
+            current = row
+
+        if current is not None:
+            merged.append(current)
+
+        return merged
     @property
     def client(self):
         if self._client is None:
@@ -179,5 +221,8 @@ class TextractParser:
         print(">>> MOVIMIENTOS COUNT:", len(movimientos))
         if movimientos:
             print(">>> FIRST MOVIMIENTO:", movimientos[0])
-
+        movimientos = self._merge_rows(movimientos)
+        print(">>> MOVIMIENTOS AFTER MERGE:", len(movimientos))
+        if movimientos:
+            print(">>> FIRST MERGED MOVIMIENTO:", movimientos[0])
         return self.parse_func(movimientos)
