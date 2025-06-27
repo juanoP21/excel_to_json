@@ -42,7 +42,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'api', 'rest_framework','pdfconvert']
+    'api',
+    'rest_framework',
+    'pdfconvert',
+    'ocr',
+]  
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
