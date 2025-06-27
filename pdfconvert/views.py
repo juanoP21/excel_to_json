@@ -5,7 +5,6 @@ from rest_framework          import status
 
 from pdfconvert.parsers.plaintext import PlainTextParser
 from pdfconvert.registry          import get_handler
-from pdfconvert.parsers.ocr_textract import TextractOCRParser
 from rest_framework.parsers import MultiPartParser
 
 
@@ -88,26 +87,3 @@ class PDFTextractView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TextractOCRView(APIView):
-    """Return plain text extracted from a PDF using Amazon Textract."""
-    parser_classes = [MultiPartParser]
-
-    def post(self, request, *args, **kwargs):
-        file = request.FILES.get('file')
-        if not file:
-            return Response(
-                {"error": "Archivo no proporcionado", "detail": "Se requiere el campo 'file'"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        parser = TextractOCRParser()
-        try:
-            payload = parser.parse(file)
-        except Exception as e:
-            print(">>> OCR TEXTRACT ERROR:", e)
-            return Response(
-                {"error": "Error al procesar el archivo", "detail": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return Response(payload, status=status.HTTP_200_OK)

@@ -5,8 +5,9 @@ import time
 
 class TextractOCRParser:
     """Extract plain text from PDFs using Amazon Textract"""
+
     def __init__(self, bucket: str | None = None):
-        self.bucket = bucket or os.getenv("TEXTRACT_S3_BUCKET")
+        self.bucket = bucket or os.getenv('TEXTRACT_S3_BUCKET')
         self._client = None
         self._s3 = None
 
@@ -17,7 +18,7 @@ class TextractOCRParser:
                 'textract',
                 aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
                 aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-                region_name="us-east-2"
+                region_name='us-east-2'
             )
         return self._client
 
@@ -28,14 +29,14 @@ class TextractOCRParser:
                 's3',
                 aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
                 aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-                region_name="us-east-2"
+                region_name='us-east-2'
             )
         return self._s3
 
     def parse(self, file_obj):
         data = file_obj.read()
         if not self.bucket:
-            raise ValueError("TEXTRACT_S3_BUCKET not configured")
+            raise ValueError('TEXTRACT_S3_BUCKET not configured')
 
         key = f"textract_ocr/{uuid.uuid4()}.pdf"
         self.s3.put_object(Bucket=self.bucket, Key=key, Body=data)
@@ -53,7 +54,7 @@ class TextractOCRParser:
                 resp = self.client.get_document_text_detection(JobId=job_id)
             status = resp.get('JobStatus')
             if status == 'FAILED':
-                raise RuntimeError(f"Textract job {job_id} failed")
+                raise RuntimeError(f'Textract job {job_id} failed')
             blocks.extend(resp.get('Blocks', []))
             next_token = resp.get('NextToken')
             if status == 'SUCCEEDED' and not next_token:
@@ -63,4 +64,4 @@ class TextractOCRParser:
         self.s3.delete_object(Bucket=self.bucket, Key=key)
 
         lines = [b['Text'] for b in blocks if b.get('BlockType') == 'LINE']
-        return {"text": "\n".join(lines)}
+        return {'text': '\n'.join(lines)}

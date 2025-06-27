@@ -4,7 +4,6 @@ from .bogota import ParserBogota
 from .davivienda import ParserDavivienda
 from .casa_bolsa import ParserCasaBolsa
 from .textract import TextractParser
-from .ocr_textract import TextractOCRParser
 __all__ = [
     "PlainTextParser",
     "ParserBancolombia",
@@ -12,5 +11,5 @@ __all__ = [
     "ParserDavivienda",
     "ParserCasaBolsa",
     "TextractParser",
-    "TextractOCRParser",
 ]
+
