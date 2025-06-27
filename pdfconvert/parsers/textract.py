@@ -2,7 +2,7 @@ import boto3
 import os
 import uuid
 import time
-
+import re
 class TextractParser:
     """Parser that extracts tables from PDF files using Amazon Textract.
 
@@ -74,49 +74,45 @@ class TextractParser:
                     ordered.append(row)
                 tables.append(ordered)
         return tables
-    def _merge_rows(self, rows):
-        """Merge rows that belong to the same transaction when a line break
-        causes a row to be split across multiple lines."""
-
+    def _merge_rows(self, rows: list[dict]) -> list[dict]:
         merged: list[dict] = []
         current: dict | None = None
 
-        def _is_number(val: str) -> bool:
-            try:
-                float(val.replace(",", ""))
-                return True
-            except Exception:
-                return False
-
         for row in rows:
             fecha = row.get("fecha", "").strip()
-            valor = row.get("valor", "").strip()
-            print(">>> Processing row:", row)
-            continuation = (
-                not fecha
-                and (not valor or not _is_number(valor))
-                and any(row.get(k) for k in ("descripcion", "sucursal_canal", "referencia1", "referencia2", "documento"))
-            )
+            # Chequeamos si esta fila trae un importe (en tu caso lo nombras 'documento')
+            val_key = "valor" if "valor" in row else "documento"
+            valor = row.get(val_key, "").strip()
 
-            if current is not None and continuation:
-                for k, v in row.items():
-                    if not v:
-                        continue
-                    if k in {"descripcion", "sucursal_canal", "referencia1", "referencia2", "documento"}:
-                        cur_val = current.get(k, "")
-                        current[k] = f"{cur_val} {v}".strip() if cur_val else v
-                    elif k == "valor" and not current.get(k):
-                        current[k] = v
-                continue
+            if not fecha:
+                # 1) Si sólo tiene importe y no fecha, es el cierre de current
+                if valor and current is not None:
+                    # fusiona el importe en el campo correcto
+                    current[val_key] = valor
+                    merged.append(current)
+                    current = None
+                    continue
 
+                # 2) Si no tiene fecha ni importe, es continuación de texto
+                if current is not None:
+                    for k, v in row.items():
+                        if not v or k == "fecha" or k == val_key:
+                            continue
+                        prev = current.get(k, "")
+                        current[k] = f"{prev} {v}".strip() if prev else v
+                    continue
+
+            # Si llegamos aquí, trae fecha: cerramos el anterior (si existía) y empezamos uno nuevo
             if current is not None:
                 merged.append(current)
-            current = row
+            current = row.copy()
 
+        # Al final, si quedó uno abierto, lo añadimos
         if current is not None:
             merged.append(current)
 
         return merged
+
     @property
     def client(self):
         if self._client is None:
@@ -220,9 +216,20 @@ class TextractParser:
 
         print(">>> MOVIMIENTOS COUNT:", len(movimientos))
         if movimientos:
-            print(">>> FIRST MOVIMIENTO:", movimientos[0])
+            print(">>> MOVIMIENTOS:", movimientos)
         movimientos = self._merge_rows(movimientos)
         print(">>> MOVIMIENTOS AFTER MERGE:", len(movimientos))
         if movimientos:
-            print(">>> FIRST MERGED MOVIMIENTO:", movimientos[0])
+            print(">>> FIRST MERGED MOVIMIENTO:", movimientos[0])\
+                
+        for m in movimientos:
+            if m.get("descripcion", "").upper().startswith("TRANSFERENCIA DESDE NEQUI"):
+                ref = m.get("referencia1", "").strip()
+                # Partimos por la primera tanda de dígitos y nos quedamos con lo que viene después
+                parts = re.split(r"\s*\d+\s*", ref, maxsplit=1)
+                if len(parts) > 1:
+                    ref = parts[1]
+                # Eliminamos cualquier dígito residual
+                ref = re.sub(r"\d+", "", ref).strip()
+                m["referencia1"] = ref
         return self.parse_func(movimientos)
