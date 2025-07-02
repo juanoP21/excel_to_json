@@ -1,6 +1,6 @@
 # pdfconvert/urls.py
 from django.urls import path
-from .views import PDFConvertView,PDFTextractView
+from .views import PDFConvertView, PDFTextractView
 
 app_name = 'pdfconvert'
 
