@@ -228,11 +228,6 @@ class TextractParser:
             elif t_idx == 0:
                 rows = table[1:]
             for row in rows:
-                 valor_raw = row.get("valor") or row.get("documento") or ""
-            if "documento" in row:
-                row.pop("documento")
-            if valor_raw:
-                row["valor"] = valor_raw
                 mov = {}
                 for idx, cell in enumerate(row):
                     if idx >= len(keys):
