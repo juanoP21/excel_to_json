@@ -5,6 +5,67 @@ import time
 import re
 import json
 
+
+def _parse_amount(raw: str) -> float:
+    """Return numeric value from a raw amount string.
+
+    Handles values using either comma or dot as decimal separator and
+    supports optional minus signs or parentheses for negative numbers.
+    If parsing fails, ``0.0`` is returned.
+    """
+    if not raw:
+        return 0.0
+
+    text = str(raw).strip()
+    negative = False
+
+    # Handle trailing/leading minus sign or parentheses
+    if text.startswith('(') and text.endswith(')'):
+        negative = True
+        text = text[1:-1]
+    if text.endswith('-'):
+        negative = True
+        text = text[:-1]
+    if text.startswith('-'):
+        negative = True
+        text = text[1:]
+
+    # Remove currency symbols and spaces
+    text = re.sub(r'[^0-9,\.]+', '', text)
+
+    if ',' in text and '.' in text:
+        # whichever separator appears last is the decimal separator
+        if text.rfind(',') > text.rfind('.'):
+            text = text.replace('.', '')
+            text = text.replace(',', '.')
+        else:
+            text = text.replace(',', '')
+    elif text.count(',') > 1 and '.' not in text:
+        text = text.replace(',', '')
+    elif text.count('.') > 1 and ',' not in text:
+        text = text.replace('.', '')
+    elif ',' in text:
+        # Assume comma is decimal if there's a single comma with two digits after
+        parts = text.split(',')
+        if len(parts) == 2 and len(parts[1]) <= 2:
+            text = text.replace('.', '')
+            text = text.replace(',', '.')
+        else:
+            text = text.replace(',', '')
+    elif '.' in text:
+        parts = text.split('.')
+        if len(parts) == 2 and len(parts[1]) <= 2:
+            text = text.replace(',', '')
+        else:
+            text = text.replace('.', '')
+
+    try:
+        value = float(text)
+    except Exception:
+        value = 0.0
+
+    return -value if negative else value
+
 def parse_func(movimientos):
     """
     Post-procesado de movimientos:
@@ -21,29 +82,43 @@ def parse_func(movimientos):
         # Descripción original detectada en la tabla
         desc = mov.get("descripcion", "").strip()
 
-        # Obtenemos valor bruto: primero intentamos 'credito', luego 'debito'
-        raw_credito = mov.get("credito", "") or mov.get("importe_credito", "")
-        raw_debito  = mov.get("debito", "")  or mov.get("importe_debito", "")
-        valor_bruto = raw_credito or raw_debito
+        # Valor puede venir en diferentes campos
+        raw_val = (
+            mov.get("valor")
+            or mov.get("documento")
+            or mov.get("credito")
+            or mov.get("debito")
+            or mov.get("importe_credito")
+            or mov.get("importe_debito")
+            or ""
+        )
 
-        # Normalizamos miles y decimales
-        valor_norm = valor_bruto.replace(".", "").replace(",", ".").strip()
+        val = _parse_amount(raw_val)
 
-        # Si es NEQUI, va a crédito; si no, va a débito
-        if "NEQUI" in desc.upper():
-            importe_credito = valor_norm
-            importe_debito  = ""
+        # Formateamos la fecha si es posible
+        fecha_raw = mov.get("fecha", "")
+        try:
+            from datetime import datetime
+
+            fecha_dt = datetime.fromisoformat(fecha_raw)
+            fecha_fmt = fecha_dt.strftime("%d/%m/%Y")
+        except Exception:
+            fecha_fmt = fecha_raw
+
+        if val >= 0:
+            importe_credito = f"{val:.2f}"
+            importe_debito = ""
         else:
-            importe_credito = "0.00"
-            importe_debito  = valor_norm
+            importe_credito = ""
+            importe_debito = f"{-val:.2f}"
 
         salida.append({
-            "Fecha":           mov.get("fecha", ""),
+            "Fecha": fecha_fmt,
             "importe_credito": importe_credito,
-            "importe_debito":  importe_debito,
-            "referencia":      nombre,
-            "Info_detallada":  f"{desc} {nombre}".strip(),
-            "Info_detallada2": mov.get("sucursal_canal", "")
+            "importe_debito": importe_debito,
+            "referencia": nombre,
+            "Info_detallada": f"{desc} {nombre}".strip(),
+            "Info_detallada2": mov.get("sucursal_canal", ""),
         })
     return salida
 
