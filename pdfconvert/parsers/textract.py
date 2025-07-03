@@ -5,67 +5,6 @@ import time
 import re
 import json
 
-
-def _parse_amount(raw: str) -> float:
-    """Return numeric value from a raw amount string.
-
-    Handles values using either comma or dot as decimal separator and
-    supports optional minus signs or parentheses for negative numbers.
-    If parsing fails, ``0.0`` is returned.
-    """
-    if not raw:
-        return 0.0
-
-    text = str(raw).strip()
-    negative = False
-
-    # Handle trailing/leading minus sign or parentheses
-    if text.startswith('(') and text.endswith(')'):
-        negative = True
-        text = text[1:-1]
-    if text.endswith('-'):
-        negative = True
-        text = text[:-1]
-    if text.startswith('-'):
-        negative = True
-        text = text[1:]
-
-    # Remove currency symbols and spaces
-    text = re.sub(r'[^0-9,\.]+', '', text)
-
-    if ',' in text and '.' in text:
-        # whichever separator appears last is the decimal separator
-        if text.rfind(',') > text.rfind('.'):
-            text = text.replace('.', '')
-            text = text.replace(',', '.')
-        else:
-            text = text.replace(',', '')
-    elif text.count(',') > 1 and '.' not in text:
-        text = text.replace(',', '')
-    elif text.count('.') > 1 and ',' not in text:
-        text = text.replace('.', '')
-    elif ',' in text:
-        # Assume comma is decimal if there's a single comma with two digits after
-        parts = text.split(',')
-        if len(parts) == 2 and len(parts[1]) <= 2:
-            text = text.replace('.', '')
-            text = text.replace(',', '.')
-        else:
-            text = text.replace(',', '')
-    elif '.' in text:
-        parts = text.split('.')
-        if len(parts) == 2 and len(parts[1]) <= 2:
-            text = text.replace(',', '')
-        else:
-            text = text.replace('.', '')
-
-    try:
-        value = float(text)
-    except Exception:
-        value = 0.0
-
-    return -value if negative else value
-
 def parse_func(movimientos):
     """
     Post-procesado de movimientos:
@@ -74,6 +13,7 @@ def parse_func(movimientos):
       En caso contrario, lo coloca en importe_debito.
     - Deja intactos tus nombres de campo de salida.
     """
+    print(">>> INICIANDO parse_func con", len(movimientos), "movimientos")
     salida = []
     for mov in movimientos:
         # Extraemos el nombre del remitente tal como vino en Textract
@@ -81,43 +21,48 @@ def parse_func(movimientos):
 
         # Descripción original detectada en la tabla
         desc = mov.get("descripcion", "").strip()
-
-        # Valor puede venir en diferentes campos
-        raw_val = (
-            mov.get("valor")
-            or mov.get("documento")
-            or mov.get("credito")
+    raw_val = ( 
+        mov.get("valor")
+        or mov.get("documento")
+        or mov.get("credito")
             or mov.get("debito")
             or mov.get("importe_credito")
             or mov.get("importe_debito")
             or ""
-        )
-
-        # Formateamos la fecha si es posible
-        fecha_raw = mov.get("fecha", "")
-        try:
-            from datetime import datetime
-
-            fecha_dt = datetime.fromisoformat(fecha_raw)
-            fecha_fmt = fecha_dt.strftime("%d/%m/%Y")
-        except Exception:
-            fecha_fmt = fecha_raw
-
-        if val >= 0:
-            importe_credito = f"{val:.2f}"
-            importe_debito = ""
+    )
+    # Asignar raw_val a crédito o débito según su signo
+    if raw_val is not None:
+        val_str = str(raw_val).strip()
+        if val_str.startswith('-'):
+            # negativo → débito
+            raw_debito = mov["debito"] = val_str
+            raw_credito = mov["credito"] = ""
         else:
-            importe_credito = ""
-            importe_debito = f"{-val:.2f}"
+            # positivo → crédito
+            raw_credito = mov["credito"] = val_str
+            raw_debito = mov["debito"] = ""
+        # Obtenemos valor bruto: primero intentamos 'credito', luego 'debito'
+        valor_bruto = raw_credito or raw_debito
+
+        # Normalizamos miles y decimales
+
+        # Si es NEQUI, va a crédito; si no, va a débito
+        if "NEQUI" in desc.upper():
+            importe_credito = valor_bruto
+            importe_debito  = ""
+        else:
+            importe_credito = "0.00"
+            importe_debito  = valor_bruto
 
         salida.append({
-            "Fecha": fecha_fmt,
+            "Fecha":           mov.get("fecha", ""),
             "importe_credito": importe_credito,
-            "importe_debito": importe_debito,
-            "referencia": nombre,
-            "Info_detallada": f"{desc} {nombre}".strip(),
-            "Info_detallada2": mov.get("sucursal_canal", ""),
+            "importe_debito":  importe_debito,
+            "referencia":      nombre,
+            "Info_detallada":  f"{desc} {nombre}".strip(),
+            "Info_detallada2": mov.get("sucursal_canal", "")
         })
+    print(">>> FINALIZANDO parse_func, salida:", len(salida), "elementos")
     return salida
 
 class TextractParser:
@@ -234,12 +179,12 @@ class TextractParser:
 
     def parse(self, file_obj):
         data = file_obj.read()
-        print(">>> TEXTRACT FILE SIZE:", len(data), "bytes")
+        # print(">>> TEXTRACT FILE SIZE:", len(data), "bytes")
         if not self.bucket:
             raise ValueError("TEXTRACT_S3_BUCKET not configured")
 
         key = f"textract_uploads/{uuid.uuid4()}.pdf"
-        print(">>> uploading to S3:", self.bucket, key)
+        # print(">>> uploading to S3:", self.bucket, key)
         self.s3.put_object(Bucket=self.bucket, Key=key, Body=data)
 
         print(">>> starting Textract job...")
@@ -255,7 +200,7 @@ class TextractParser:
             raise
 
         job_id = start_resp['JobId']
-        print(">>> JOB ID:", job_id)
+        # print(">>> JOB ID:", job_id)
         next_token = None
         blocks = []
         while True:
@@ -289,7 +234,7 @@ class TextractParser:
             raise ValueError("No tables detected in document")
 
         header = tables[0][0]
-        print(">>> HEADER ROW:", header)
+        # print(">>> HEADER ROW:", header)
         keys = [self._normalize_header(h) for h in header]
 
         movimientos = []
@@ -313,8 +258,8 @@ class TextractParser:
 
         print(">>> MOVIMIENTOS COUNT:", len(movimientos))
         if movimientos:
-            print(">>> MOVIMIENTOS:", movimientos)
-        movimientos = self._merge_rows(movimientos)
+            # print(">>> MOVIMIENTOS:", movimientos)
+            movimientos = self._merge_rows(movimientos)
         print(">>> MOVIMIENTOS AFTER MERGE:", len(movimientos))
         if movimientos:
             print(">>> FIRST MERGED MOVIMIENTO:", movimientos[0])
@@ -340,4 +285,4 @@ if __name__ == "__main__":
         movimientos = parser.parse(f)
 
     # Imprimimos el resultado en JSON bonito
-    print(json.dumps(movimientos, indent=2, ensure_ascii=False))
+    # print(json.dumps(movimientos, indent=2, ensure_ascii=False))
