@@ -21,29 +21,54 @@ def parse_func(movimientos):
         # Descripción original detectada en la tabla
         desc = mov.get("descripcion", "").strip()
 
-        # Obtenemos valor bruto: primero intentamos 'credito', luego 'debito'
-        raw_credito = mov.get("credito", "") or mov.get("importe_credito", "")
-        raw_debito  = mov.get("debito", "")  or mov.get("importe_debito", "")
-        valor_bruto = raw_credito or raw_debito
+        # Valor puede venir en diferentes campos
+        raw_val = (
+            mov.get("valor")
+            or mov.get("documento")
+            or mov.get("credito")
+            or mov.get("debito")
+            or mov.get("importe_credito")
+            or mov.get("importe_debito")
+            or ""
+        )
 
-        # Normalizamos miles y decimales
-        valor_norm = valor_bruto.replace(".", "").replace(",", ".").strip()
+        clean_val = (
+            raw_val.replace("$", "")
+            .replace(" ", "")
+            .replace(",", "")
+        )
+        try:
+            val = float(clean_val)
+        except Exception:
+            try:
+                val = float(clean_val.replace(".", "").replace(",", "."))
+            except Exception:
+                val = 0.0
 
-        # Si es NEQUI, va a crédito; si no, va a débito
-        if "NEQUI" in desc.upper():
-            importe_credito = valor_norm
-            importe_debito  = ""
+        # Formateamos la fecha si es posible
+        fecha_raw = mov.get("fecha", "")
+        try:
+            from datetime import datetime
+
+            fecha_dt = datetime.fromisoformat(fecha_raw)
+            fecha_fmt = fecha_dt.strftime("%d/%m/%Y")
+        except Exception:
+            fecha_fmt = fecha_raw
+
+        if val >= 0:
+            importe_credito = f"{val:.2f}"
+            importe_debito = ""
         else:
-            importe_credito = "0.00"
-            importe_debito  = valor_norm
+            importe_credito = ""
+            importe_debito = f"{-val:.2f}"
 
         salida.append({
-            "Fecha":           mov.get("fecha", ""),
+            "Fecha": fecha_fmt,
             "importe_credito": importe_credito,
-            "importe_debito":  importe_debito,
-            "referencia":      nombre,
-            "Info_detallada":  f"{desc} {nombre}".strip(),
-            "Info_detallada2": mov.get("sucursal_canal", "")
+            "importe_debito": importe_debito,
+            "referencia": nombre,
+            "Info_detallada": f"{desc} {nombre}".strip(),
+            "Info_detallada2": mov.get("sucursal_canal", ""),
         })
     return salida
 
