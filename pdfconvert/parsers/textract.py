@@ -3,6 +3,50 @@ import os
 import uuid
 import time
 import re
+import json
+
+def parse_func(movimientos):
+    """
+    Post-procesado de movimientos:
+    - Concatena el nombre del remitente (referencia1) al final de la descripción.
+    - Si la descripción contiene "NEQUI", mueve el valor a importe_credito.
+      En caso contrario, lo coloca en importe_debito.
+    - Deja intactos tus nombres de campo de salida.
+    """
+    salida = []
+    for mov in movimientos:
+        # Extraemos el nombre del remitente tal como vino en Textract
+        nombre = mov.get("referencia1", "").strip()
+
+        # Descripción original detectada en la tabla
+        desc = mov.get("descripcion", "").strip()
+
+        # Obtenemos valor bruto: primero intentamos 'credito', luego 'debito'
+        raw_credito = mov.get("credito", "") or mov.get("importe_credito", "")
+        raw_debito  = mov.get("debito", "")  or mov.get("importe_debito", "")
+        valor_bruto = raw_credito or raw_debito
+
+        # Normalizamos miles y decimales
+        valor_norm = valor_bruto.replace(".", "").replace(",", ".").strip()
+
+        # Si es NEQUI, va a crédito; si no, va a débito
+        if "NEQUI" in desc.upper():
+            importe_credito = valor_norm
+            importe_debito  = ""
+        else:
+            importe_credito = "0.00"
+            importe_debito  = valor_norm
+
+        salida.append({
+            "Fecha":           mov.get("fecha", ""),
+            "importe_credito": importe_credito,
+            "importe_debito":  importe_debito,
+            "referencia":      nombre,
+            "Info_detallada":  f"{desc} {nombre}".strip(),
+            "Info_detallada2": mov.get("sucursal_canal", "")
+        })
+    return salida
+
 class TextractParser:
     """Parser that extracts tables from PDF files using Amazon Textract.
 
@@ -74,44 +118,24 @@ class TextractParser:
                     ordered.append(row)
                 tables.append(ordered)
         return tables
-    def _merge_rows(self, rows: list[dict]) -> list[dict]:
-        merged: list[dict] = []
-        current: dict | None = None
 
-        for row in rows:
-            fecha = row.get("fecha", "").strip()
-            # Chequeamos si esta fila trae un importe (en tu caso lo nombras 'documento')
-            val_key = "valor" if "valor" in row else "documento"
-            valor = row.get(val_key, "").strip()
+    def _merge_rows(self, movimientos):
+        consolidados = []
+        for mov in movimientos:
+            fecha = mov.get("fecha", "").strip()
+            ref   = mov.get("referencia1", "").strip()
 
-            if not fecha:
-                # 1) Si sólo tiene importe y no fecha, es el cierre de current
-                if valor and current is not None:
-                    # fusiona el importe en el campo correcto
-                    current[val_key] = valor
-                    merged.append(current)
-                    current = None
-                    continue
-
-                # 2) Si no tiene fecha ni importe, es continuación de texto
-                if current is not None:
-                    for k, v in row.items():
-                        if not v or k == "fecha" or k == val_key:
-                            continue
-                        prev = current.get(k, "")
-                        current[k] = f"{prev} {v}".strip() if prev else v
-                    continue
-
-            # Si llegamos aquí, trae fecha: cerramos el anterior (si existía) y empezamos uno nuevo
-            if current is not None:
-                merged.append(current)
-            current = row.copy()
-
-        # Al final, si quedó uno abierto, lo añadimos
-        if current is not None:
-            merged.append(current)
-
-        return merged
+            # Si NO tiene fecha pero SÍ tiene referencia => es continuación
+            if not fecha and ref and consolidados:
+                anterior = consolidados[-1]
+                anterior["referencia1"] = (
+                    anterior.get("referencia1","").strip()
+                    + " "
+                    + ref
+                ).strip()
+            else:
+                consolidados.append(mov.copy())
+        return consolidados
 
     @property
     def client(self):
@@ -204,6 +228,11 @@ class TextractParser:
             elif t_idx == 0:
                 rows = table[1:]
             for row in rows:
+                 valor_raw = row.get("valor") or row.get("documento") or ""
+            if "documento" in row:
+                row.pop("documento")
+            if valor_raw:
+                row["valor"] = valor_raw
                 mov = {}
                 for idx, cell in enumerate(row):
                     if idx >= len(keys):
@@ -220,16 +249,27 @@ class TextractParser:
         movimientos = self._merge_rows(movimientos)
         print(">>> MOVIMIENTOS AFTER MERGE:", len(movimientos))
         if movimientos:
-            print(">>> FIRST MERGED MOVIMIENTO:", movimientos[0])\
-                
+            print(">>> FIRST MERGED MOVIMIENTO:", movimientos[0])
+        
+
         for m in movimientos:
-            if m.get("descripcion", "").upper().startswith("TRANSFERENCIA DESDE NEQUI"):
-                ref = m.get("referencia1", "").strip()
-                # Partimos por la primera tanda de dígitos y nos quedamos con lo que viene después
-                parts = re.split(r"\s*\d+\s*", ref, maxsplit=1)
-                if len(parts) > 1:
-                    ref = parts[1]
-                # Eliminamos cualquier dígito residual
-                ref = re.sub(r"\d+", "", ref).strip()
-                m["referencia1"] = ref
+            if m.get("descripcion","").upper().startswith("TRANSFERENCIA DESDE NEQUI"):
+                m["referencia1"] = re.sub(r"^\d+\s*", "", m["referencia1"]).strip()
+
+        # 3) Post-procesado final
         return self.parse_func(movimientos)
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) < 2:
+        print("Uso: python textract.py <ruta_al_pdf>")
+        sys.exit(1)
+
+    ruta_pdf = sys.argv[1]
+    # Leemos el PDF en binario
+    with open(ruta_pdf, "rb") as f:
+        parser = TextractParser(parse_func, bucket=os.getenv("TEXTRACT_S3_BUCKET"))
+        movimientos = parser.parse(f)
+
+    # Imprimimos el resultado en JSON bonito
+    print(json.dumps(movimientos, indent=2, ensure_ascii=False))
