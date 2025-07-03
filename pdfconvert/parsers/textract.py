@@ -5,6 +5,67 @@ import time
 import re
 import json
 
+
+def _parse_amount(raw: str) -> float:
+    """Return numeric value from a raw amount string.
+
+    Handles values using either comma or dot as decimal separator and
+    supports optional minus signs or parentheses for negative numbers.
+    If parsing fails, ``0.0`` is returned.
+    """
+    if not raw:
+        return 0.0
+
+    text = str(raw).strip()
+    negative = False
+
+    # Handle trailing/leading minus sign or parentheses
+    if text.startswith('(') and text.endswith(')'):
+        negative = True
+        text = text[1:-1]
+    if text.endswith('-'):
+        negative = True
+        text = text[:-1]
+    if text.startswith('-'):
+        negative = True
+        text = text[1:]
+
+    # Remove currency symbols and spaces
+    text = re.sub(r'[^0-9,\.]+', '', text)
+
+    if ',' in text and '.' in text:
+        # whichever separator appears last is the decimal separator
+        if text.rfind(',') > text.rfind('.'):
+            text = text.replace('.', '')
+            text = text.replace(',', '.')
+        else:
+            text = text.replace(',', '')
+    elif text.count(',') > 1 and '.' not in text:
+        text = text.replace(',', '')
+    elif text.count('.') > 1 and ',' not in text:
+        text = text.replace('.', '')
+    elif ',' in text:
+        # Assume comma is decimal if there's a single comma with two digits after
+        parts = text.split(',')
+        if len(parts) == 2 and len(parts[1]) <= 2:
+            text = text.replace('.', '')
+            text = text.replace(',', '.')
+        else:
+            text = text.replace(',', '')
+    elif '.' in text:
+        parts = text.split('.')
+        if len(parts) == 2 and len(parts[1]) <= 2:
+            text = text.replace(',', '')
+        else:
+            text = text.replace('.', '')
+
+    try:
+        value = float(text)
+    except Exception:
+        value = 0.0
+
+    return -value if negative else value
+
 def parse_func(movimientos):
     """
     Post-procesado de movimientos:
@@ -31,19 +92,6 @@ def parse_func(movimientos):
             or mov.get("importe_debito")
             or ""
         )
-
-        clean_val = (
-            raw_val.replace("$", "")
-            .replace(" ", "")
-            .replace(",", "")
-        )
-        try:
-            val = float(clean_val)
-        except Exception:
-            try:
-                val = float(clean_val.replace(".", "").replace(",", "."))
-            except Exception:
-                val = 0.0
 
         # Formateamos la fecha si es posible
         fecha_raw = mov.get("fecha", "")
