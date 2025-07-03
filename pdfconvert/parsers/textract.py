@@ -93,8 +93,6 @@ def parse_func(movimientos):
             or ""
         )
 
-        val = _parse_amount(raw_val)
-
         # Formateamos la fecha si es posible
         fecha_raw = mov.get("fecha", "")
         try:
