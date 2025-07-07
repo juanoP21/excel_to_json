@@ -7,22 +7,31 @@ import json
 
 
 def _parse_amount(raw: str) -> float:
-    """Return numeric value from a raw amount string.
+    """Return numeric value from ``raw``.
 
-    Handles values using either comma or dot as decimal separator and
-    supports optional minus signs or parentheses for negative numbers.
-    If parsing fails, ``0.0`` is returned.
+    The function is resilient to different thousands/decimal separators and
+    sign formats. If parsing fails, ``0.0`` is returned.
     """
     if not raw:
         return 0.0
 
     text = str(raw).strip()
+
+    # Normalize various minus symbols to plain hyphen
+    text = text.replace('\u2212', '-')  # minus sign
+    text = text.replace('\u2013', '-')  # en dash
+    text = text.replace('\u2014', '-')  # em dash
+
     negative = False
 
-    # Handle trailing/leading minus sign or parentheses
+    # Handle parentheses indicating negatives
     if text.startswith('(') and text.endswith(')'):
         negative = True
         text = text[1:-1]
+
+    text = text.strip()
+
+    # Trailing or leading minus sign
     if text.endswith('-'):
         negative = True
         text = text[:-1]
@@ -30,34 +39,18 @@ def _parse_amount(raw: str) -> float:
         negative = True
         text = text[1:]
 
-    # Remove currency symbols and spaces
+    # Remove currency symbols, spaces and other noise
     text = re.sub(r'[^0-9,\.]+', '', text)
 
-    if ',' in text and '.' in text:
-        # whichever separator appears last is the decimal separator
-        if text.rfind(',') > text.rfind('.'):
-            text = text.replace('.', '')
-            text = text.replace(',', '.')
-        else:
-            text = text.replace(',', '')
-    elif text.count(',') > 1 and '.' not in text:
-        text = text.replace(',', '')
-    elif text.count('.') > 1 and ',' not in text:
-        text = text.replace('.', '')
-    elif ',' in text:
-        # Assume comma is decimal if there's a single comma with two digits after
-        parts = text.split(',')
-        if len(parts) == 2 and len(parts[1]) <= 2:
-            text = text.replace('.', '')
-            text = text.replace(',', '.')
-        else:
-            text = text.replace(',', '')
-    elif '.' in text:
-        parts = text.split('.')
-        if len(parts) == 2 and len(parts[1]) <= 2:
-            text = text.replace(',', '')
-        else:
-            text = text.replace('.', '')
+    # Simplified numeric parsing
+    clean_text = text.replace(',', '').replace(' ', '')
+    try:
+        value = float(clean_text)
+    except Exception:
+        try:
+            value = float(clean_text.replace('.', '').replace(',', '.'))
+        except Exception:
+            value = 0.0
 
     try:
         value = float(text)
@@ -93,6 +86,9 @@ def parse_func(movimientos):
             or ""
         )
 
+        val = _parse_amount(raw_val)
+        raw_str = str(raw_val).strip()
+
         # Formateamos la fecha si es posible
         fecha_raw = mov.get("fecha", "")
         try:
@@ -104,11 +100,11 @@ def parse_func(movimientos):
             fecha_fmt = fecha_raw
 
         if val >= 0:
-            importe_credito = f"{val:.2f}"
+            importe_credito = raw_str
             importe_debito = ""
         else:
             importe_credito = ""
-            importe_debito = f"{-val:.2f}"
+            importe_debito = raw_str
 
         salida.append({
             "Fecha": fecha_fmt,
@@ -192,23 +188,42 @@ class TextractParser:
                 tables.append(ordered)
         return tables
 
-    def _merge_rows(self, movimientos):
-        consolidados = []
-        for mov in movimientos:
-            fecha = mov.get("fecha", "").strip()
-            ref   = mov.get("referencia1", "").strip()
+    def _merge_rows(self, rows: list[dict]) -> list[dict]:
+        """Combine multiline rows coming from Textract tables."""
+        merged: list[dict] = []
+        current: dict | None = None
 
-            # Si NO tiene fecha pero SÍ tiene referencia => es continuación
-            if not fecha and ref and consolidados:
-                anterior = consolidados[-1]
-                anterior["referencia1"] = (
-                    anterior.get("referencia1","").strip()
-                    + " "
-                    + ref
-                ).strip()
-            else:
-                consolidados.append(mov.copy())
-        return consolidados
+        for row in rows:
+            fecha = row.get("fecha", "").strip()
+            val_key = "valor" if "valor" in row else "documento"
+            valor = row.get(val_key, "").strip()
+
+            if not fecha:
+                # 1) Si solo tiene importe y no fecha, cierra "current"
+                if valor and current is not None:
+                    current[val_key] = valor
+                    merged.append(current)
+                    current = None
+                    continue
+
+                # 2) Si no tiene fecha ni importe, continua descripcion
+                if current is not None:
+                    for k, v in row.items():
+                        if not v or k in {"fecha", val_key}:
+                            continue
+                        prev = current.get(k, "")
+                        current[k] = f"{prev} {v}".strip() if prev else v
+                    continue
+
+            # Al llegar aqui, la fila trae fecha: cierra la anterior
+            if current is not None:
+                merged.append(current)
+            current = row.copy()
+
+        if current is not None:
+            merged.append(current)
+
+        return merged
 
     @property
     def client(self):

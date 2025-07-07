@@ -20,7 +20,7 @@ class PDFConvertView(APIView):
             )
 
         texto = request.data
-        print(">>> TEXT RECEIVED:") 
+        print(">> > TEXT RECEIVED:") 
         print(texto[:200], "...")  # primeros 200 caracteres
 
         try:
@@ -35,7 +35,7 @@ class PDFConvertView(APIView):
         print(">>> PAYLOAD HEADERS:", {k: payload.get(k) for k in [
             "empresa", "numero_cuenta", "fecha_hora_actual", "nit", "tipo_cuenta"
         ]})
-        print(">>> RAW MOVIMIENTOS COUNT:", len(payload.get("movimientos", [])))
+        # print(">>> RAW MOVIMIENTOS COUNT:", len(payload.get("movimientos", [])))
         serializer_class = handler.get("serializer")
         if serializer_class is None:
             # Si no hay serializer definido, devolvemos el payload directamente
@@ -53,7 +53,6 @@ class PDFTextractView(APIView):
 
     def post(self, request, bank_key, *args, **kwargs):
         handler = get_handler(bank_key)
-        print(">>> HANDLER:", handler)
         if not handler:
             return Response(
                 {"error": f'Banco "{bank_key}" no soportado.'},
