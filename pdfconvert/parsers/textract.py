@@ -384,12 +384,15 @@ class TextractParser:
         for i, mov in enumerate(movimientos[:5]):
             print(f">>> MERGED ROW {i}:", mov)
 
-        movimientos = self._fix_nequi_refs(movimientos)
+        # Inspect NEQUI rows after merging
+        for i, mov in enumerate(movimientos):
+            if mov.get("descripcion", "").upper().startswith("TRANSFERENCIA DESDE NEQUI"):
+                print(f"DEBUG: NEQUI MERGED {i}", mov)
 
+        # Skip NEQUI post-processing so we can inspect raw OCR output
         for m in movimientos:
-            if m.get("descripcion","").upper().startswith("TRANSFERENCIA DESDE NEQUI"):
-                m["referencia1"] = re.sub(r"^\d+\s*", "", m["referencia1"]).strip()
-                print("DEBUG: NEQUI ADJUSTED", m)
+            if m.get("descripcion", "").upper().startswith("TRANSFERENCIA DESDE NEQUI"):
+                print("DEBUG: NEQUI ROW", m)
 
         # 3) Post-procesado final
         return self.parse_func(movimientos)
