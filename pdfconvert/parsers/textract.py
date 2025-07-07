@@ -233,6 +233,37 @@ class TextractParser:
 
         return merged
 
+    def _fix_nequi_refs(self, rows: list[dict]) -> list[dict]:
+        """Heuristically fix split NEQUI references.
+
+        Textract sometimes joins the trailing digits of one NEQUI transfer with
+        the next row. We detect consecutive rows with the same description where
+        the first lacks a trailing 4 digit code and the next starts with a name
+        followed by digits. In that case we move that leading segment back to
+        the previous row.
+        """
+        nequi = "TRANSFERENCIA DESDE NEQUI"
+        pat = re.compile(r"^(\S+(?: \S+)* \d{4})(.*)", re.IGNORECASE)
+        fixed = list(rows)
+        for i in range(1, len(fixed)):
+            prev = fixed[i - 1]
+            curr = fixed[i]
+            if (
+                prev.get("descripcion", "").upper().startswith(nequi)
+                and curr.get("descripcion", "").upper().startswith(nequi)
+                and not re.search(r"\d{4}\b", prev.get("referencia1", ""))
+            ):
+                m = pat.match(curr.get("referencia1", ""))
+                if m:
+                    leading, rest = m.groups()
+                    prev_ref = f"{prev.get('referencia1', '').strip()} {leading}".strip()
+                    curr_ref = rest.strip()
+                    prev["referencia1"] = prev_ref
+                    curr["referencia1"] = curr_ref
+                    print("DEBUG: NEQUI SPLIT", prev)
+                    print("DEBUG: NEQUI REMAINDER", curr)
+        return fixed
+
     @property
     def client(self):
         if self._client is None:
@@ -343,6 +374,7 @@ class TextractParser:
         for i, mov in enumerate(movimientos[:5]):
             print(f">>> MERGED ROW {i}:", mov)
 
+        movimientos = self._fix_nequi_refs(movimientos)
 
         for m in movimientos:
             if m.get("descripcion","").upper().startswith("TRANSFERENCIA DESDE NEQUI"):
