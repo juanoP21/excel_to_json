@@ -194,14 +194,22 @@ class TextractParser:
         current: dict | None = None
 
         for row in rows:
+            print("DEBUG: RAW ROW", row)
             fecha = row.get("fecha", "").strip()
             val_key = "valor" if "valor" in row else "documento"
             valor = row.get(val_key, "").strip()
 
             if not fecha:
-                # 1) Si solo tiene importe y no fecha, cierra "current"
+                # 1) Si solo tiene importe y no fecha, cierra "current" y
+                #    copia cualquier otra columna adicional.
                 if valor and current is not None:
+                    print("DEBUG: merging value row", row)
                     current[val_key] = valor
+                    for k, v in row.items():
+                        if not v or k in {"fecha", val_key}:
+                            continue
+                        prev = current.get(k, "")
+                        current[k] = f"{prev} {v}".strip() if prev else v
                     merged.append(current)
                     current = None
                     continue
@@ -316,6 +324,7 @@ class TextractParser:
             elif t_idx == 0:
                 rows = table[1:]
             for row in rows:
+                print("DEBUG: TABLE ROW", row)
                 mov = {}
                 for idx, cell in enumerate(row):
                     if idx >= len(keys):
@@ -331,13 +340,14 @@ class TextractParser:
             print(">>> MOVIMIENTOS:", movimientos)
         movimientos = self._merge_rows(movimientos)
         print(">>> MOVIMIENTOS AFTER MERGE:", len(movimientos))
-        if movimientos:
-            print(">>> FIRST MERGED MOVIMIENTO:", movimientos[0])
-        
+        for i, mov in enumerate(movimientos[:5]):
+            print(f">>> MERGED ROW {i}:", mov)
+
 
         for m in movimientos:
             if m.get("descripcion","").upper().startswith("TRANSFERENCIA DESDE NEQUI"):
                 m["referencia1"] = re.sub(r"^\d+\s*", "", m["referencia1"]).strip()
+                print("DEBUG: NEQUI ADJUSTED", m)
 
         # 3) Post-procesado final
         return self.parse_func(movimientos)
