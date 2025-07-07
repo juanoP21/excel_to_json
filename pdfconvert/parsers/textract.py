@@ -75,10 +75,12 @@ class TextractParser:
                 tables.append(ordered)
         return tables
     def _merge_rows(self, rows: list[dict]) -> list[dict]:
+        print(">>> _merge_rows input:", rows)
         merged: list[dict] = []
         current: dict | None = None
 
         for row in rows:
+            print(">>> processing row:", row)
             fecha = row.get("fecha", "").strip()
             # Chequeamos si esta fila trae un importe (en tu caso lo nombras 'documento')
             val_key = "valor" if "valor" in row else "documento"
@@ -87,8 +89,14 @@ class TextractParser:
             if not fecha:
                 # 1) Si sólo tiene importe y no fecha, es el cierre de current
                 if valor and current is not None:
+                    print(">>> closing current row with value:", valor)
                     # fusiona el importe en el campo correcto
                     current[val_key] = valor
+                    for k, v in row.items():
+                        if k in {"fecha", val_key} or not v:
+                            continue
+                        prev = current.get(k, "")
+                        current[k] = f"{prev} {v}".strip() if prev else v
                     merged.append(current)
                     current = None
                     continue
@@ -111,6 +119,7 @@ class TextractParser:
         if current is not None:
             merged.append(current)
 
+        print(">>> _merge_rows output:", merged)
         return merged
 
     @property
@@ -188,6 +197,7 @@ class TextractParser:
 
         tables = self._extract_tables(blocks)
         print(">>> TABLES FOUND:", len(tables))
+        print(">>> RAW TABLES:", tables)
         if not tables:
             raise ValueError("No tables detected in document")
 
@@ -212,6 +222,7 @@ class TextractParser:
                     if key:
                         mov[key] = cell
                 if mov:
+                    print(">>> extracted row:", mov)
                     movimientos.append(mov)
 
         print(">>> MOVIMIENTOS COUNT:", len(movimientos))
@@ -220,10 +231,11 @@ class TextractParser:
         movimientos = self._merge_rows(movimientos)
         print(">>> MOVIMIENTOS AFTER MERGE:", len(movimientos))
         if movimientos:
-            print(">>> FIRST MERGED MOVIMIENTO:", movimientos[0])\
+            print(">>> FIRST MERGED MOVIMIENTO:", movimientos[0])
                 
         for m in movimientos:
             if m.get("descripcion", "").upper().startswith("TRANSFERENCIA DESDE NEQUI"):
+                print(">>> NEQUI ORIGINAL REF:", m.get("referencia1", ""))
                 ref = m.get("referencia1", "").strip()
                 # Partimos por la primera tanda de dígitos y nos quedamos con lo que viene después
                 parts = re.split(r"\s*\d+\s*", ref, maxsplit=1)
@@ -232,4 +244,5 @@ class TextractParser:
                 # Eliminamos cualquier dígito residual
                 ref = re.sub(r"\d+", "", ref).strip()
                 m["referencia1"] = ref
+                print(">>> NEQUI CLEAN REF:", ref)
         return self.parse_func(movimientos)
