@@ -50,6 +50,9 @@ def _format_spanish_date(date_str: str) -> str:
 
 def _extract_receipts(text: str) -> list[dict]:
     """Parse Textract plain text into structured receipt data."""
+    print(">>> _extract_receipts: Iniciando extracción de recibos")
+    print(f">>> _extract_receipts: Texto de entrada tiene {len(text)} caracteres")
+    
     pattern = re.compile(
         r"Santiago de Ca(?:li|ll),?\s*(?P<fecha>.*?\d{4}).*?"
         r"DEBE A:\s*(?P<debe_a>.*?)\nLa suma.*?TOTAL\n\$?\.?\s*(?P<total>[\d\.,]+)",
@@ -57,11 +60,17 @@ def _extract_receipts(text: str) -> list[dict]:
     )
 
     receipts: list[dict] = []
+    matches_found = 0
     for match in pattern.finditer(text):
+        matches_found += 1
+        print(f">>> _extract_receipts: Encontrada coincidencia #{matches_found}")
         raw_fecha = match.group("fecha").strip()
         fecha = _format_spanish_date(raw_fecha)
         data_block = match.group("debe_a").strip()
         total = match.group("total").strip()
+        
+        print(f">>> _extract_receipts: fecha raw='{raw_fecha}', formateada='{fecha}'")
+        print(f">>> _extract_receipts: total='{total}'")
 
         name = data_block.splitlines()[0].strip() if data_block else ""
         cedula_match = re.search(r"Cedula[:\s]*(\d+)", data_block, re.IGNORECASE)
@@ -86,6 +95,11 @@ def _extract_receipts(text: str) -> list[dict]:
             }
         )
 
+    print(f">>> _extract_receipts: Total de recibos extraídos: {len(receipts)}")
+    if not receipts:
+        print(">>> _extract_receipts: No se encontraron recibos. Mostrando muestra del texto:")
+        print(f">>> _extract_receipts: Primeros 500 caracteres: {text[:500]}")
+    
     return receipts
 
 class TextractOCRView(APIView):
@@ -93,16 +107,21 @@ class TextractOCRView(APIView):
     parser_classes = [MultiPartParser]
 
     def post(self, request, *args, **kwargs):
+        print(">>> OCR VIEW: Recibida petición POST")
         file = request.FILES.get('file')
         if not file:
+            print(">>> OCR VIEW: No se proporcionó archivo")
             return Response(
                 {"error": "Archivo no proporcionado", "detail": "Se requiere el campo 'file'"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        print(f">>> OCR VIEW: Archivo recibido - {file.name}, tamaño: {file.size} bytes")
         parser = TextractOCRParser()
         try:
+            print(">>> OCR VIEW: Iniciando procesamiento con TextractOCRParser")
             payload = parser.parse(file)
+            print(">>> OCR TEXTRACT PAYLOAD:", payload)
         except Exception as e:
             print(">>> OCR TEXTRACT ERROR:", e)
             return Response(
@@ -110,6 +129,11 @@ class TextractOCRView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         text = payload.get("text", "")
+        print(f">>> OCR VIEW: Texto extraído, longitud: {len(text)} caracteres")
+        print(f">>> OCR VIEW: Primeros 200 caracteres del texto: {text[:200]}")
+        
         data = _extract_receipts(text)
+        print(f">>> OCR VIEW: Recibos extraídos: {len(data)} elementos")
+        print(f">>> OCR VIEW: Datos extraídos: {data}")
 
         return Response({"results": data}, status=status.HTTP_200_OK)

@@ -62,6 +62,8 @@ class TextractOCRParser:
             time.sleep(1)
 
         self.s3.delete_object(Bucket=self.bucket, Key=key)
-
+        if not blocks:
+            raise ValueError('No text found in the document')
+        print(f"Textract job {job_id} completed successfully with {len(blocks)} blocks")
         lines = [b['Text'] for b in blocks if b.get('BlockType') == 'LINE']
         return {'text': '\n'.join(lines)}
