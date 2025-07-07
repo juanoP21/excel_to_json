@@ -19,6 +19,8 @@ from pdfconvert.utils.parse_casa_bolsa import (
     parse_casa_bolsa_transformado,
 )
 
+from pdfconvert.parsers.textract import parse_func
+
 HANDLERS = {
     'bancolombia': {
         'parser':    ParserBancolombia(parse_func=parse_bancolombia),

@@ -5,6 +5,60 @@ import time
 import re
 import json
 
+
+def _parse_amount(raw: str) -> float:
+    """Return numeric value from ``raw``.
+
+    The function is resilient to different thousands/decimal separators and
+    sign formats. If parsing fails, ``0.0`` is returned.
+    """
+    if not raw:
+        return 0.0
+
+    text = str(raw).strip()
+
+    # Normalize various minus symbols to plain hyphen
+    text = text.replace('\u2212', '-')  # minus sign
+    text = text.replace('\u2013', '-')  # en dash
+    text = text.replace('\u2014', '-')  # em dash
+
+    negative = False
+
+    # Handle parentheses indicating negatives
+    if text.startswith('(') and text.endswith(')'):
+        negative = True
+        text = text[1:-1]
+
+    text = text.strip()
+
+    # Trailing or leading minus sign
+    if text.endswith('-'):
+        negative = True
+        text = text[:-1]
+    if text.startswith('-'):
+        negative = True
+        text = text[1:]
+
+    # Remove currency symbols, spaces and other noise
+    text = re.sub(r'[^0-9,\.]+', '', text)
+
+    # Simplified numeric parsing
+    clean_text = text.replace(',', '').replace(' ', '')
+    try:
+        value = float(clean_text)
+    except Exception:
+        try:
+            value = float(clean_text.replace('.', '').replace(',', '.'))
+        except Exception:
+            value = 0.0
+
+    try:
+        value = float(text)
+    except Exception:
+        value = 0.0
+
+    return -value if negative else value
+
 def parse_func(movimientos):
     """
     Post-procesado de movimientos:
@@ -13,7 +67,6 @@ def parse_func(movimientos):
       En caso contrario, lo coloca en importe_debito.
     - Deja intactos tus nombres de campo de salida.
     """
-    print(">>> INICIANDO parse_func con", len(movimientos), "movimientos")
     salida = []
     for mov in movimientos:
         # Extraemos el nombre del remitente tal como vino en Textract
@@ -21,48 +74,46 @@ def parse_func(movimientos):
 
         # Descripción original detectada en la tabla
         desc = mov.get("descripcion", "").strip()
-    raw_val = ( 
-        mov.get("valor")
-        or mov.get("documento")
-        or mov.get("credito")
+
+        # Valor puede venir en diferentes campos
+        raw_val = (
+            mov.get("valor")
+            or mov.get("documento")
+            or mov.get("credito")
             or mov.get("debito")
             or mov.get("importe_credito")
             or mov.get("importe_debito")
             or ""
-    )
-    # Asignar raw_val a crédito o débito según su signo
-    if raw_val is not None:
-        val_str = str(raw_val).strip()
-        if val_str.startswith('-'):
-            # negativo → débito
-            raw_debito = mov["debito"] = val_str
-            raw_credito = mov["credito"] = ""
-        else:
-            # positivo → crédito
-            raw_credito = mov["credito"] = val_str
-            raw_debito = mov["debito"] = ""
-        # Obtenemos valor bruto: primero intentamos 'credito', luego 'debito'
-        valor_bruto = raw_credito or raw_debito
+        )
 
-        # Normalizamos miles y decimales
+        val = _parse_amount(raw_val)
+        raw_str = str(raw_val).strip()
 
-        # Si es NEQUI, va a crédito; si no, va a débito
-        if "NEQUI" in desc.upper():
-            importe_credito = valor_bruto
-            importe_debito  = ""
+        # Formateamos la fecha si es posible
+        fecha_raw = mov.get("fecha", "")
+        try:
+            from datetime import datetime
+
+            fecha_dt = datetime.fromisoformat(fecha_raw)
+            fecha_fmt = fecha_dt.strftime("%d/%m/%Y")
+        except Exception:
+            fecha_fmt = fecha_raw
+
+        if val >= 0:
+            importe_credito = raw_str
+            importe_debito = ""
         else:
-            importe_credito = "0.00"
-            importe_debito  = valor_bruto
+            importe_credito = ""
+            importe_debito = raw_str
 
         salida.append({
-            "Fecha":           mov.get("fecha", ""),
+            "Fecha": fecha_fmt,
             "importe_credito": importe_credito,
-            "importe_debito":  importe_debito,
-            "referencia":      nombre,
-            "Info_detallada":  f"{desc} {nombre}".strip(),
-            "Info_detallada2": mov.get("sucursal_canal", "")
+            "importe_debito": importe_debito,
+            "referencia": nombre,
+            "Info_detallada": f"{desc} {nombre}".strip(),
+            "Info_detallada2": mov.get("sucursal_canal", ""),
         })
-    print(">>> FINALIZANDO parse_func, salida:", len(salida), "elementos")
     return salida
 
 class TextractParser:
@@ -137,23 +188,42 @@ class TextractParser:
                 tables.append(ordered)
         return tables
 
-    def _merge_rows(self, movimientos):
-        consolidados = []
-        for mov in movimientos:
-            fecha = mov.get("fecha", "").strip()
-            ref   = mov.get("referencia1", "").strip()
+    def _merge_rows(self, rows: list[dict]) -> list[dict]:
+        """Combine multiline rows coming from Textract tables."""
+        merged: list[dict] = []
+        current: dict | None = None
 
-            # Si NO tiene fecha pero SÍ tiene referencia => es continuación
-            if not fecha and ref and consolidados:
-                anterior = consolidados[-1]
-                anterior["referencia1"] = (
-                    anterior.get("referencia1","").strip()
-                    + " "
-                    + ref
-                ).strip()
-            else:
-                consolidados.append(mov.copy())
-        return consolidados
+        for row in rows:
+            fecha = row.get("fecha", "").strip()
+            val_key = "valor" if "valor" in row else "documento"
+            valor = row.get(val_key, "").strip()
+
+            if not fecha:
+                # 1) Si solo tiene importe y no fecha, cierra "current"
+                if valor and current is not None:
+                    current[val_key] = valor
+                    merged.append(current)
+                    current = None
+                    continue
+
+                # 2) Si no tiene fecha ni importe, continua descripcion
+                if current is not None:
+                    for k, v in row.items():
+                        if not v or k in {"fecha", val_key}:
+                            continue
+                        prev = current.get(k, "")
+                        current[k] = f"{prev} {v}".strip() if prev else v
+                    continue
+
+            # Al llegar aqui, la fila trae fecha: cierra la anterior
+            if current is not None:
+                merged.append(current)
+            current = row.copy()
+
+        if current is not None:
+            merged.append(current)
+
+        return merged
 
     @property
     def client(self):
@@ -179,12 +249,12 @@ class TextractParser:
 
     def parse(self, file_obj):
         data = file_obj.read()
-        # print(">>> TEXTRACT FILE SIZE:", len(data), "bytes")
+        print(">>> TEXTRACT FILE SIZE:", len(data), "bytes")
         if not self.bucket:
             raise ValueError("TEXTRACT_S3_BUCKET not configured")
 
         key = f"textract_uploads/{uuid.uuid4()}.pdf"
-        # print(">>> uploading to S3:", self.bucket, key)
+        print(">>> uploading to S3:", self.bucket, key)
         self.s3.put_object(Bucket=self.bucket, Key=key, Body=data)
 
         print(">>> starting Textract job...")
@@ -200,7 +270,7 @@ class TextractParser:
             raise
 
         job_id = start_resp['JobId']
-        # print(">>> JOB ID:", job_id)
+        print(">>> JOB ID:", job_id)
         next_token = None
         blocks = []
         while True:
@@ -234,7 +304,7 @@ class TextractParser:
             raise ValueError("No tables detected in document")
 
         header = tables[0][0]
-        # print(">>> HEADER ROW:", header)
+        print(">>> HEADER ROW:", header)
         keys = [self._normalize_header(h) for h in header]
 
         movimientos = []
@@ -258,8 +328,8 @@ class TextractParser:
 
         print(">>> MOVIMIENTOS COUNT:", len(movimientos))
         if movimientos:
-            # print(">>> MOVIMIENTOS:", movimientos)
-            movimientos = self._merge_rows(movimientos)
+            print(">>> MOVIMIENTOS:", movimientos)
+        movimientos = self._merge_rows(movimientos)
         print(">>> MOVIMIENTOS AFTER MERGE:", len(movimientos))
         if movimientos:
             print(">>> FIRST MERGED MOVIMIENTO:", movimientos[0])
@@ -285,4 +355,4 @@ if __name__ == "__main__":
         movimientos = parser.parse(f)
 
     # Imprimimos el resultado en JSON bonito
-    # print(json.dumps(movimientos, indent=2, ensure_ascii=False))
+    print(json.dumps(movimientos, indent=2, ensure_ascii=False))
