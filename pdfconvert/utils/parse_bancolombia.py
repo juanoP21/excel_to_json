@@ -140,9 +140,21 @@ def parse_bancolombia(text: str) -> dict:
     data["movimientos"] = movimientos
     data["transformado"] = parse_bancolombia_transformado(movimientos)
     return data
-def parse_bancolombia_transformado(data: dict) -> dict:
-    print(f"Procesando {len(data)} movimientos...")
-    movimientos = data
+def parse_bancolombia_transformado(data: dict | list) -> dict:
+    """Convert the extracted movements into the final dict structure.
+
+    ``data`` can be either the list of movimientos directly or a dictionary
+    containing the ``movimientos`` key. This helper normalises the input so the
+    subsequent processing doesn't fail with ``NameError`` when the expected key
+    is missing.
+    """
+
+    if isinstance(data, dict):
+        movimientos = data.get("movimientos", [])
+    else:
+        movimientos = data or []
+
+    print(f"Procesando {len(movimientos)} movimientos...")
     resultado = []
 
     for mov in movimientos:
