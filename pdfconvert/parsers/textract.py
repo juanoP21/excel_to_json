@@ -234,34 +234,44 @@ class TextractParser:
         return merged
 
     def _fix_nequi_refs(self, rows: list[dict]) -> list[dict]:
-        """Heuristically fix split NEQUI references.
+        """Heuristically fix NEQUI references that were split across rows."""
 
-        Textract sometimes joins the trailing digits of one NEQUI transfer with
-        the next row. We detect consecutive rows with the same description where
-        the first lacks a trailing 4 digit code and the next starts with a name
-        followed by digits. In that case we move that leading segment back to
-        the previous row.
-        """
         nequi = "TRANSFERENCIA DESDE NEQUI"
-        pat = re.compile(r"^(\S+(?: \S+)* \d{4})(.*)", re.IGNORECASE)
         fixed = list(rows)
-        for i in range(1, len(fixed)):
-            prev = fixed[i - 1]
+
+        def is_nequi(row: dict) -> bool:
+            return row.get("descripcion", "").upper().startswith(nequi)
+
+        for i in range(len(fixed) - 1):
             curr = fixed[i]
-            if (
-                prev.get("descripcion", "").upper().startswith(nequi)
-                and curr.get("descripcion", "").upper().startswith(nequi)
-                and not re.search(r"\d{4}\b", prev.get("referencia1", ""))
-            ):
-                m = pat.match(curr.get("referencia1", ""))
+            nxt = fixed[i + 1]
+
+            if not (is_nequi(curr) and is_nequi(nxt)):
+                continue
+
+            ref = curr.get("referencia1", "").strip()
+            next_ref = nxt.get("referencia1", "").strip()
+
+            # Case 1: digits leaked to start of next row
+            if not re.search(r"\d{4}\b", ref):
+                m = re.match(r"^(\S+(?:\s+\S+)*\d{4})(.*)", next_ref)
                 if m:
                     leading, rest = m.groups()
-                    prev_ref = f"{prev.get('referencia1', '').strip()} {leading}".strip()
-                    curr_ref = rest.strip()
-                    prev["referencia1"] = prev_ref
-                    curr["referencia1"] = curr_ref
-                    print("DEBUG: NEQUI SPLIT", prev)
-                    print("DEBUG: NEQUI REMAINDER", curr)
+                    curr["referencia1"] = f"{ref} {leading}".strip()
+                    nxt["referencia1"] = rest.strip()
+                    print("DEBUG: NEQUI SPLIT", curr)
+                    print("DEBUG: NEQUI REMAINDER", nxt)
+                    continue
+
+            # Case 2: two codes stuck in same row
+            m = re.match(r"(.+?\d{4})\s+(.*\d{4})(.*)", ref)
+            if m:
+                first, second, tail = m.groups()
+                curr["referencia1"] = first.strip()
+                nxt["referencia1"] = f"{second}{tail} {next_ref}".strip()
+                print("DEBUG: NEQUI DOUBLE", curr)
+                print("DEBUG: NEQUI NEXT", nxt)
+
         return fixed
 
     @property
@@ -354,8 +364,8 @@ class TextractParser:
                 rows = table[1:]
             elif t_idx == 0:
                 rows = table[1:]
-            for row in rows:
-                print("DEBUG: TABLE ROW", row)
+            for r_idx, row in enumerate(rows):
+                print(f"DEBUG: TABLE {t_idx} ROW {r_idx}", row)
                 mov = {}
                 for idx, cell in enumerate(row):
                     if idx >= len(keys):
