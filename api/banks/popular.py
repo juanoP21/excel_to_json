@@ -73,4 +73,13 @@ def process(df: pd.DataFrame) -> pd.DataFrame:
     desc_col = _get_description_column(df)
 
     records = [_parse_row(row, desc_col) for _, row in df.iterrows()]
-    return pd.DataFrame(records)
+    result = pd.DataFrame(records)
+
+    # Sort transactions by date from earliest to latest
+    fechas = pd.to_datetime(result["Fecha"], format="%d/%m/%Y", errors="coerce")
+    result.insert(0, "_sort_date", fechas)
+    result.sort_values("_sort_date", inplace=True)
+    result.drop(columns=["_sort_date"], inplace=True)
+    result.reset_index(drop=True, inplace=True)
+
+    return result
