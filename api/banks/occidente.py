@@ -15,6 +15,8 @@ def _parse_row(row: pd.Series) -> dict:
     referencia = "" if pd.isna(raw_referencia) else str(raw_referencia).strip()
     if referencia.lower() == "nan":
         referencia = ""
+    elif raw_referencia == 0:
+        referencia = "AVENIDA 3A. NORTE"
     transaccion = str(row.get("Transacción", "")).strip()
 
     # If "Nro. Documento" is empty try to extract it from the end of
