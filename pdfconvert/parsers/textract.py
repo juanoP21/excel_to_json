@@ -4,6 +4,7 @@ import uuid
 import time
 import re
 import json
+from datetime import datetime
 
 
 def _parse_amount(raw: str) -> float:
@@ -59,23 +60,31 @@ def _parse_amount(raw: str) -> float:
 
     return -value if negative else value
 
+
+def _format_date(raw: str) -> tuple[str, datetime | None]:
+    """Return (formatted_date, datetime_obj) from various raw formats."""
+    if not raw:
+        return "", None
+    text = str(raw).strip()
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            dt = datetime.strptime(text, fmt)
+            return dt.strftime("%d/%m/%Y"), dt
+        except Exception:
+            continue
+    try:
+        dt = datetime.fromisoformat(text)
+        return dt.strftime("%d/%m/%Y"), dt
+    except Exception:
+        return text, None
+
 def parse_func(movimientos):
-    """
-    Post-procesado de movimientos:
-    - Concatena el nombre del remitente (referencia1) al final de la descripción.
-    - Si la descripción contiene "NEQUI", mueve el valor a importe_credito.
-      En caso contrario, lo coloca en importe_debito.
-    - Deja intactos tus nombres de campo de salida.
-    """
-    salida = []
+    """Transform Textract rows into the final ordered structure."""
+    registros = []
+
     for mov in movimientos:
-        # Extraemos el nombre del remitente tal como vino en Textract
         nombre = mov.get("referencia1", "").strip()
-
-        # Descripción original detectada en la tabla
         desc = mov.get("descripcion", "").strip()
-
-        # Valor puede venir en diferentes campos
         raw_val = (
             mov.get("valor")
             or mov.get("documento")
@@ -87,34 +96,28 @@ def parse_func(movimientos):
         )
 
         val = _parse_amount(raw_val)
-        raw_str = str(raw_val).strip()
-
-        # Formateamos la fecha si es posible
-        fecha_raw = mov.get("fecha", "")
-        try:
-            from datetime import datetime
-
-            fecha_dt = datetime.fromisoformat(fecha_raw)
-            fecha_fmt = fecha_dt.strftime("%d/%m/%Y")
-        except Exception:
-            fecha_fmt = fecha_raw
+        fecha_fmt, fecha_dt = _format_date(mov.get("fecha", ""))
 
         if val >= 0:
-            importe_credito = raw_str
+            importe_credito = f"{val:.2f}"
             importe_debito = ""
         else:
             importe_credito = ""
-            importe_debito = raw_str
+            importe_debito = f"{-val:.2f}"
 
-        salida.append({
+        registro = {
             "Fecha": fecha_fmt,
             "importe_credito": importe_credito,
             "importe_debito": importe_debito,
             "referencia": nombre,
             "Info_detallada": f"{desc} {nombre}".strip(),
             "Info_detallada2": mov.get("sucursal_canal", ""),
-        })
-    return salida
+        }
+
+        registros.append((fecha_dt or datetime.max, registro))
+
+    registros.sort(key=lambda r: r[0])
+    return [r[1] for r in registros]
 
 class TextractParser:
     """Parser that extracts tables from PDF files using Amazon Textract.
