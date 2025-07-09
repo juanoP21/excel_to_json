@@ -110,7 +110,7 @@ def parse_func(movimientos):
             "importe_credito": importe_credito,
             "importe_debito": importe_debito,
             "referencia": nombre,
-            "Info_detallada": f"{desc} {nombre}".strip(),
+            "Info_detallada": f"{desc} ".strip(),
             "Info_detallada2": mov.get("sucursal_canal", ""),
         }
 
