@@ -3,19 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <title>Upload PDF</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .loader {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+    </style>
 </head>
-<body>
-    <h1>Upload PDF for Textract</h1>
+<body class="bg-light">
+<div class="container py-5">
+    <h1 class="mb-4">Upload PDF for Textract</h1>
     {% if message %}
-        <p>{{ message }}</p>
+        <div class="alert alert-{{ 'success' if success else 'danger' }}" role="alert">
+            {{ message }}
+        </div>
     {% endif %}
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" id="upload-form" class="card p-4">
         {% csrf_token %}
-        <label for="bank_key">Bank key:</label>
-        <input type="text" name="bank_key" id="bank_key" required><br>
-        <label for="file">PDF file:</label>
-        <input type="file" name="file" id="file" accept="application/pdf" required><br>
-        <button type="submit">Upload</button>
+        <div class="mb-3">
+            <label for="bank_key" class="form-label">Bank key</label>
+            <input type="text" name="bank_key" id="bank_key" class="form-control" required>
+        </div>
+        <div class="mb-3">
+            <label for="file" class="form-label">PDF file</label>
+            <input type="file" name="file" id="file" class="form-control" accept="application/pdf" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
     </form>
+</div>
+<div class="loader" id="loading">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+</div>
+<script>
+    const form = document.getElementById('upload-form');
+    const loading = document.getElementById('loading');
+    form.addEventListener('submit', function () {
+        loading.style.display = 'flex';
+    });
+</script>
 </body>
 </html>

@@ -102,19 +102,21 @@ class PDFUploadView(View):
 
         if not bank_key or not file:
             msg = "Debe proporcionar el banco y el archivo PDF."
-            return render(request, self.template_name, {"message": msg})
+            return render(request, self.template_name, {"message": msg, "success": False})
 
         handler = get_handler(bank_key)
         if not handler:
             msg = f'Banco "{bank_key}" no soportado.'
-            return render(request, self.template_name, {"message": msg})
+            return render(request, self.template_name, {"message": msg, "success": False})
 
+        success = False
         try:
             handler["parser"].parse(file)
             msg = "Archivo procesado correctamente."
+            success = True
         except Exception as e:
             msg = f"Error al procesar el archivo: {e}"
 
-        return render(request, self.template_name, {"message": msg})
+        return render(request, self.template_name, {"message": msg, "success": success})
 
 
