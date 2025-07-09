@@ -115,9 +115,10 @@ def parse_func(movimientos):
         }
 
         registros.append((fecha_dt or datetime.max, registro))
-
     registros.sort(key=lambda r: r[0])
-    return [r[1] for r in registros]
+    
+    # Retornamos con la estructura {"results": [movimientos]}
+    return {"results": [r[1] for r in registros]}
 
 class TextractParser:
     """Parser that extracts tables from PDF files using Amazon Textract.
