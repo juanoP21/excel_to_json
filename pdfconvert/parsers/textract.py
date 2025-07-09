@@ -8,54 +8,45 @@ from datetime import datetime
 
 
 def _parse_amount(raw: str) -> float:
-    """Return numeric value from ``raw``.
-
-    The function is resilient to different thousands/decimal separators and
-    sign formats. If parsing fails, ``0.0`` is returned.
-    """
-    if not raw:
-        return 0.0
-
-    text = str(raw).strip()
-
+    """Return numeric value from raw with correct detection of decimal and thousand separators."""
+    text = str(raw or "").strip()
     # Normalize various minus symbols to plain hyphen
-    text = text.replace('\u2212', '-')  # minus sign
-    text = text.replace('\u2013', '-')  # en dash
-    text = text.replace('\u2014', '-')  # em dash
+    for ch in ('\u2212', '\u2013', '\u2014'):
+        text = text.replace(ch, '-')
 
+    # Detect negative via parentheses or leading/trailing minus
     negative = False
-
-    # Handle parentheses indicating negatives
     if text.startswith('(') and text.endswith(')'):
         negative = True
-        text = text[1:-1]
-
-    text = text.strip()
-
-    # Trailing or leading minus sign
+        text = text[1:-1].strip()
     if text.endswith('-'):
         negative = True
-        text = text[:-1]
+        text = text[:-1].strip()
     if text.startswith('-'):
         negative = True
-        text = text[1:]
+        text = text[1:].strip()
 
-    # Remove currency symbols, spaces and other noise
-    text = re.sub(r'[^0-9,\.]+', '', text)
+    # Strip any currency symbols, spaces, letters
+    text = re.sub(r'[^\d\.,]', '', text)
 
-    # Simplified numeric parsing
-    clean_text = text.replace(',', '').replace(' ', '')
-    try:
-        value = float(clean_text)
-    except Exception:
-        try:
-            value = float(clean_text.replace('.', '').replace(',', '.'))
-        except Exception:
-            value = 0.0
+    # Decide which separator is decimal:
+    # If both present, the last one wins.
+    if ',' in text and '.' in text:
+        if text.rfind(',') > text.rfind('.'):
+            # comma is decimal sep, dot is thousand sep
+            text = text.replace('.', '')
+            text = text.replace(',', '.')
+        else:
+            # dot is decimal sep, comma is thousand sep
+            text = text.replace(',', '')
+    elif ',' in text:
+        # only commas → treat as decimal sep
+        text = text.replace(',', '.')
+    # else only dots or only digits → OK
 
     try:
         value = float(text)
-    except Exception:
+    except ValueError:
         value = 0.0
 
     return -value if negative else value
@@ -96,14 +87,15 @@ def parse_func(movimientos):
         )
 
         val = _parse_amount(raw_val)
+        print(f"Raw value: {raw_val}, parsed value: {val}")
+        raw_str = str(raw_val).strip()
         fecha_fmt, fecha_dt = _format_date(mov.get("fecha", ""))
-
         if val >= 0:
-            importe_credito = f"{val:.2f}"
-            importe_debito = ""
+            importe_credito = val
+            importe_debito = 0.0
         else:
-            importe_credito = ""
-            importe_debito = f"{-val:.2f}"
+            importe_credito = 0.0
+            importe_debito = abs(val)
 
         registro = {
             "Fecha": fecha_fmt,
