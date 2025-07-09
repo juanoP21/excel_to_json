@@ -8,7 +8,7 @@ from datetime import datetime
 
 
 def _parse_amount(raw: str) -> float:
-    """Return numeric value from raw with correct detection of decimal and thousand separators."""
+    """Return numeric value from raw with decimal point as '.', treating commas as thousand separators."""
     text = str(raw or "").strip()
     # Normalize various minus symbols to plain hyphen
     for ch in ('\u2212', '\u2013', '\u2014'):
@@ -29,20 +29,19 @@ def _parse_amount(raw: str) -> float:
     # Strip any currency symbols, spaces, letters
     text = re.sub(r'[^\d\.,]', '', text)
 
-    # Decide which separator is decimal:
-    # If both present, the last one wins.
+    # If both separators appear, decide which is decimal by last occurrence
     if ',' in text and '.' in text:
         if text.rfind(',') > text.rfind('.'):
-            # comma is decimal sep, dot is thousand sep
+            # comma is decimal → replace comma with dot, remove dots as thousands
             text = text.replace('.', '')
             text = text.replace(',', '.')
         else:
-            # dot is decimal sep, comma is thousand sep
+            # dot is decimal → remove commas as thousands
             text = text.replace(',', '')
     elif ',' in text:
-        # only commas → treat as decimal sep
-        text = text.replace(',', '.')
-    # else only dots or only digits → OK
+        # only commas → remove them (treat as thousand sep)
+        text = text.replace(',', '')
+    # else only dots or only digits → leave as-is
 
     try:
         value = float(text)
@@ -74,7 +73,12 @@ def parse_func(movimientos):
     registros = []
 
     for mov in movimientos:
-        nombre = mov.get("referencia1", "").strip()
+        ref1 = mov.get("referencia1", "").strip()
+        ref2 = mov.get("referencia2", "").strip()
+        if ref1 and ref2:
+            nombre = ref1 if ref1 == ref2 else f"{ref1}-{ref2}"
+        else:
+            nombre = ref1 or ref2
         desc = mov.get("descripcion", "").strip()
         raw_val = (
             mov.get("valor")
@@ -91,11 +95,11 @@ def parse_func(movimientos):
         raw_str = str(raw_val).strip()
         fecha_fmt, fecha_dt = _format_date(mov.get("fecha", ""))
         if val >= 0:
-            importe_credito = val
+            importe_credito = f"{val:.2f}"
             importe_debito = 0.0
         else:
             importe_credito = 0.0
-            importe_debito = abs(val)
+            importe_debito = f"{abs(val):.2f}"
 
         registro = {
             "Fecha": fecha_fmt,
