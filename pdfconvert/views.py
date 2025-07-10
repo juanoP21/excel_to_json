@@ -5,6 +5,8 @@ from rest_framework          import status
 from django.views import View
 from django.shortcuts import render
 
+from pdfconvert.tasks import worker
+
 from pdfconvert.parsers.plaintext import PlainTextParser
 from pdfconvert.registry          import get_handler
 from rest_framework.parsers import MultiPartParser
@@ -98,10 +100,10 @@ class PDFUploadView(View):
 
     def post(self, request, *args, **kwargs):
         bank_key = request.POST.get("bank_key", "").strip()
-        file = request.FILES.get("file")
+        files = request.FILES.getlist("files") or request.FILES.getlist("file")
 
-        if not bank_key or not file:
-            msg = "Debe proporcionar el banco y el archivo PDF."
+        if not bank_key or not files:
+            msg = "Debe proporcionar el banco y al menos un archivo PDF."
             return render(request, self.template_name, {"message": msg, "success": False})
 
         handler = get_handler(bank_key)
@@ -109,14 +111,10 @@ class PDFUploadView(View):
             msg = f'Banco "{bank_key}" no soportado.'
             return render(request, self.template_name, {"message": msg, "success": False})
 
-        success = False
-        try:
-            handler["parser"].parse(file)
-            msg = "Archivo procesado correctamente."
-            success = True
-        except Exception as e:
-            msg = f"Error al procesar el archivo: {e}"
+        for f in files:
+            worker.enqueue(bank_key, f.read())
 
-        return render(request, self.template_name, {"message": msg, "success": success})
+        msg = f"{len(files)} archivo(s) encolado(s) para procesamiento."
+        return render(request, self.template_name, {"message": msg, "success": True})
 
 
