@@ -114,7 +114,7 @@ class PDFUploadView(View):
             return render(request, self.template_name, {"message": msg, "success": False})
 
         for f in files:
-            worker.enqueue(bank_key, f.read())
+            worker.enqueue(bank_key, f.name, f.read())
 
         msg = f"{len(files)} archivo(s) encolado(s) para procesamiento."
         return render(request, self.template_name, {"message": msg, "success": True})
