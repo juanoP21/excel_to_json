@@ -11,17 +11,17 @@ class UploadWorker:
     """Background worker that processes uploaded PDFs sequentially."""
 
     def __init__(self):
-        self.queue: 'queue.Queue[tuple[str, bytes]]' = queue.Queue()
+        self.queue: 'queue.Queue[tuple[str, str, bytes]]' = queue.Queue()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
-    def enqueue(self, bank_key: str, data: bytes) -> None:
+    def enqueue(self, bank_key: str, file_name: str, data: bytes) -> None:
         """Add a file to the processing queue."""
-        self.queue.put((bank_key, data))
+        self.queue.put((bank_key, file_name, data))
 
     def _run(self) -> None:
         while True:
-            bank_key, data = self.queue.get()
+            bank_key, file_name, data = self.queue.get()
             try:
                 handler = get_handler(bank_key)
                 if not handler:
@@ -29,6 +29,7 @@ class UploadWorker:
                 parser = handler["parser"]
                 with BytesIO(data) as f:
                     payload = parser.parse(f)
+                payload["file_name"] = file_name
                 try:
                     requests.post(WEBHOOK_URL, json=payload, timeout=10)
                 except Exception as e:
