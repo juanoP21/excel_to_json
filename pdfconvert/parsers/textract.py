@@ -7,6 +7,16 @@ import json
 from datetime import datetime
 
 
+def _is_amount(text: str) -> bool:
+    """Check if text looks like a monetary amount (e.g., '2,304,747.00' or '1,100,000')"""
+    if not text:
+        return False
+    text = text.strip()
+    # Pattern for amounts: digits with optional commas and decimal places
+    amount_pattern = r'^\d{1,3}(?:,\d{3})*(?:\.\d{2})?$'
+    return bool(re.match(amount_pattern, text))
+
+
 def _parse_amount(raw: str) -> float:
     """Return numeric value from raw with decimal point as '.', treating commas as thousand separators."""
     text = str(raw or "").strip()
@@ -75,10 +85,44 @@ def parse_func(movimientos):
     for mov in movimientos:
         ref1 = mov.get("referencia1", "").strip()
         ref2 = mov.get("referencia2", "").strip()
-        if ref1 and ref2:
-            nombre = ref1 if ref1 == ref2 else f"{ref1}-{ref2}"
+        
+        # Handle cases where references contain amounts
+        ref_parts = []
+        amount_from_ref = None
+        
+        # Check if ref1 is an amount
+        if ref1 and not _is_amount(ref1):
+            ref_parts.append(ref1)
+        elif ref1 and _is_amount(ref1):
+            amount_from_ref = ref1
+            print(f"Found amount in referencia1: {ref1}")
+        
+        # Check if ref2 is an amount  
+        if ref2 and not _is_amount(ref2):
+            ref_parts.append(ref2)
+        elif ref2 and _is_amount(ref2):
+            amount_from_ref = ref2
+            print(f"Found amount in referencia2: {ref2}")
+        
+        # Build the reference name from non-amount parts
+        if len(ref_parts) >= 2:
+            nombre = f"{ref_parts[0]}-{ref_parts[1]}"
+        elif len(ref_parts) == 1:
+            nombre = ref_parts[0]
         else:
-            nombre = ref1 or ref2
+            # If all references are amounts, use them but mark as amounts
+            if ref1 and ref2:
+                if _is_amount(ref1) and _is_amount(ref2):
+                    nombre = f"MONTO:{ref1}-MONTO:{ref2}"
+                elif _is_amount(ref1):
+                    nombre = f"MONTO:{ref1}"
+                elif _is_amount(ref2):
+                    nombre = f"MONTO:{ref2}"
+                else:
+                    nombre = f"{ref1}-{ref2}"
+            else:
+                nombre = ref1 or ref2
+        
         desc = mov.get("descripcion", "").strip()
         raw_val = (
             mov.get("valor")
@@ -87,8 +131,14 @@ def parse_func(movimientos):
             or mov.get("debito")
             or mov.get("importe_credito")
             or mov.get("importe_debito")
+            or mov.get("documentovalor")
             or ""
         )
+        
+        # If no valor found but we have an amount in references, use it
+        if (not raw_val or raw_val.strip() == "0" or raw_val.strip() == "") and amount_from_ref:
+            raw_val = amount_from_ref
+            print(f"Using amount from reference as valor: {amount_from_ref}")
 
         val = _parse_amount(raw_val)
         print(f"Raw value: {raw_val}, parsed value: {val}")

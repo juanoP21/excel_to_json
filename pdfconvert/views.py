@@ -2,6 +2,10 @@
 from rest_framework.views   import APIView
 from rest_framework.response import Response
 from rest_framework          import status
+from django.views import View
+from django.shortcuts import render
+
+from pdfconvert.tasks import worker
 
 from pdfconvert.parsers.plaintext import PlainTextParser
 from pdfconvert.registry          import get_handler
@@ -84,5 +88,33 @@ class PDFTextractView(APIView):
             return Response(payload, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PDFUploadView(View):
+    """Simple HTML interface to upload a PDF and process it with Textract."""
+
+    template_name = "pdfconvert/upload.html"
+
+    def get(self, request, *args, **kwargs):
+        return render(request, self.template_name)
+
+    def post(self, request, *args, **kwargs):
+        bank_key = request.POST.get("bank_key", "").strip()
+        files = request.FILES.getlist("files") or request.FILES.getlist("file")
+
+        if not bank_key or not files:
+            msg = "Debe proporcionar el banco y al menos un archivo PDF."
+            return render(request, self.template_name, {"message": msg, "success": False})
+
+        handler = get_handler(bank_key)
+        if not handler:
+            msg = f'Banco "{bank_key}" no soportado.'
+            return render(request, self.template_name, {"message": msg, "success": False})
+
+        for f in files:
+            worker.enqueue(bank_key, f.read())
+
+        msg = f"{len(files)} archivo(s) encolado(s) para procesamiento."
+        return render(request, self.template_name, {"message": msg, "success": True})
 
 
