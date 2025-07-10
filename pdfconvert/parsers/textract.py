@@ -261,7 +261,7 @@ class TextractParser:
             )
         return self._s3
 
-    def parse(self, file_obj):
+    def parse(self, file_obj, max_polls: int = 120):
         data = file_obj.read()
         print(">>> TEXTRACT FILE SIZE:", len(data), "bytes")
         if not self.bucket:
@@ -287,6 +287,7 @@ class TextractParser:
         print(">>> JOB ID:", job_id)
         next_token = None
         blocks = []
+        poll_count = 0
         while True:
             if next_token:
                 resp = self.client.get_document_analysis(JobId=job_id, NextToken=next_token)
@@ -303,6 +304,9 @@ class TextractParser:
 
             if status == 'SUCCEEDED' and not next_token:
                 break
+            poll_count += 1
+            if poll_count >= max_polls:
+                raise TimeoutError(f"Textract job {job_id} timed out after {max_polls} polls")
             time.sleep(1)
 
         try:
