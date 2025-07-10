@@ -8,23 +8,22 @@ from datetime import datetime
 
 
 def _is_amount(text: str) -> bool:
-    """Check if text looks like a monetary amount (e.g., '2,304,747.00' or '1,100,000')"""
+    """Check if text looks like a monetary amount (e.g., '2,304,747.00') using comma and decimal point."""
     if not text:
         return False
     text = text.strip()
-    # Pattern for amounts: digits with optional commas and decimal places
-    amount_pattern = r'^\d{1,3}(?:,\d{3})*(?:\.\d{2})?$'
+    # Pattern for amounts: digits with optional commas and mandatory decimal places
+    # Matches formats like '1,234.56' or '123.45' or '12,345,678.90'
+    amount_pattern = r'^\d{1,3}(?:,\d{3})*\.\d{2}$'
     return bool(re.match(amount_pattern, text))
 
 
 def _parse_amount(raw: str) -> float:
     """Return numeric value from raw with decimal point as '.', treating commas as thousand separators."""
     text = str(raw or "").strip()
-    # Normalize various minus symbols to plain hyphen
-    for ch in ('\u2212', '\u2013', '\u2014'):
+    for ch in ('−', '–', '—'):
         text = text.replace(ch, '-')
 
-    # Detect negative via parentheses or leading/trailing minus
     negative = False
     if text.startswith('(') and text.endswith(')'):
         negative = True
@@ -36,22 +35,16 @@ def _parse_amount(raw: str) -> float:
         negative = True
         text = text[1:].strip()
 
-    # Strip any currency symbols, spaces, letters
     text = re.sub(r'[^\d\.,]', '', text)
 
-    # If both separators appear, decide which is decimal by last occurrence
     if ',' in text and '.' in text:
         if text.rfind(',') > text.rfind('.'):
-            # comma is decimal → replace comma with dot, remove dots as thousands
             text = text.replace('.', '')
             text = text.replace(',', '.')
         else:
-            # dot is decimal → remove commas as thousands
             text = text.replace(',', '')
     elif ',' in text:
-        # only commas → remove them (treat as thousand sep)
         text = text.replace(',', '')
-    # else only dots or only digits → leave as-is
 
     try:
         value = float(text)
@@ -78,6 +71,7 @@ def _format_date(raw: str) -> tuple[str, datetime | None]:
     except Exception:
         return text, None
 
+
 def parse_func(movimientos):
     """Transform Textract rows into the final ordered structure."""
     registros = []
@@ -85,42 +79,17 @@ def parse_func(movimientos):
     for mov in movimientos:
         ref1 = mov.get("referencia1", "").strip()
         ref2 = mov.get("referencia2", "").strip()
+        # Exclude monetary amounts (must match comma+decimal) from references
+        if _is_amount(ref1):
+            ref1 = ""
+        if _is_amount(ref2):
+            ref2 = ""
 
-        # Handle cases where references contain amounts
-        ref_parts = []
-        amount_from_ref = None
-
-        # Check if ref2 is an amount
-        if ref2:
-            if _is_amount(ref2):
-                amount_from_ref = ref2
-                print(f"Found amount in referencia2: {ref2}")
-            else:
-                ref_parts.append(ref2)
-
-        # Build the reference name
-        if len(ref_parts) >= 2:
-            # only concatenate if they differ
-            if ref_parts[0] != ref_parts[1]:
-                nombre = f"{ref_parts[0]}-{ref_parts[1]}"
-            else:
-                nombre = ref_parts[0]
-        elif len(ref_parts) == 1:
-            nombre = ref_parts[0]
+        if ref1 and ref2:
+            nombre = ref1 if ref1 == ref2 else f"{ref1}-{ref2}"
         else:
-            # both references were amounts or empty
-            if ref1 and ref2:
-                if _is_amount(ref1) and _is_amount(ref2):
-                    nombre = f"{ref1}"
-                elif _is_amount(ref1):
-                    nombre = f"{ref1}"
-                elif _is_amount(ref2):
-                    nombre = f"{ref2}"
-                else:
-                    nombre = ref1  # they are equal non-amounts
-            else:
-                nombre = ref1 or ref2
-        
+            nombre = ref1 or ref2
+
         desc = mov.get("descripcion", "").strip()
         raw_val = (
             mov.get("valor")
@@ -134,9 +103,6 @@ def parse_func(movimientos):
         )
         
         # If no valor found but we have an amount in references, use it
-        if (not raw_val or raw_val.strip() == "0" or raw_val.strip() == "") and amount_from_ref:
-            raw_val = amount_from_ref
-            print(f"Using amount from reference as valor: {amount_from_ref}")
 
         val = _parse_amount(raw_val)
         print(f"Raw value: {raw_val}, parsed value: {val}")
@@ -158,10 +124,10 @@ def parse_func(movimientos):
             "Info_detallada2": mov.get("sucursal_canal", ""),
         }
 
+
         registros.append((fecha_dt or datetime.max, registro))
     registros.sort(key=lambda r: r[0])
-    
-    # Retornamos con la estructura {"results": [movimientos]}
+
     return {"results": [r[1] for r in registros]}
 
 class TextractParser:
