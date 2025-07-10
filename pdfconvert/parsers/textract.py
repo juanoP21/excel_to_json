@@ -87,6 +87,7 @@ def parse_func(movimientos):
             or mov.get("debito")
             or mov.get("importe_credito")
             or mov.get("importe_debito")
+            or mov.get("documentovalor")
             or ""
         )
 

@@ -23,9 +23,15 @@
 <div class="container py-5">
     <h1 class="mb-4">Upload PDF for Textract</h1>
     {% if message %}
-        <div class="alert alert-{{ 'success' if success else 'danger' }}" role="alert">
-            {{ message }}
-        </div>
+        {% if success %}
+            <div class="alert alert-success" role="alert">
+                {{ message }}
+            </div>
+        {% else %}
+            <div class="alert alert-danger" role="alert">
+                {{ message }}
+            </div>
+        {% endif %}
     {% endif %}
     <form method="post" enctype="multipart/form-data" id="upload-form" class="card p-4">
         {% csrf_token %}
