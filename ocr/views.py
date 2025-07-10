@@ -1,139 +1,142 @@
+import os
+import re
+import calendar
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser
 
 from .parsers import TextractOCRParser
-import re
 
 
 def _format_spanish_date(date_str: str) -> str:
-    """Return date in ``DD/mm/yyyy`` format if possible.
-
-    If the day number is missing, the last day of the month is used.
-    """
-    match = re.search(
-        r"(?:(\d{1,2})\s+de\s+)?([A-Za-z\u00f1\u00e1\u00e9\u00ed\u00f3\u00fa]+)\s+del?\s*(\d{4})",
-        date_str,
-        re.IGNORECASE,
-    )
-    if not match:
-        return date_str
-    day, month_name, year = match.groups()
+    """Return date in DD/mm/yyyy format; if day missing, use last day of the month."""
+    s = date_str.strip().lower().replace(' del ', ' de ')
+    # Numeric date
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})$", s)
+    if m:
+        d, mo, y = m.groups()
+        return f"{int(d):02d}/{int(mo):02d}/{int(y):04d}"
+    # Textual date
     months = {
-        "enero": "01",
-        "febrero": "02",
-        "marzo": "03",
-        "abril": "04",
-        "mayo": "05",
-        "junio": "06",
-        "julio": "07",
-        "agosto": "08",
-        "septiembre": "09",
-        "setiembre": "09",
-        "octubre": "10",
-        "noviembre": "11",
-        "diciembre": "12",
+        'enero':'01','febrero':'02','marzo':'03','abril':'04','mayo':'05','junio':'06',
+        'julio':'07','agosto':'08','septiembre':'09','setiembre':'09','octubre':'10',
+        'noviembre':'11','diciembre':'12'
     }
-    month = months.get(month_name.lower())
-    if not month:
+    m = re.match(
+        r"^(?:(\d{1,2})(?:\s+de)?\s+)?"
+        r"([a-zñáéíóú]+)"
+        r"(?:\s+(?:de|del))?\s+(\d{4})$", s, re.IGNORECASE
+    )
+    if not m:
         return date_str
-
+    day, mon, year = m.groups()
+    mm = months.get(mon.lower())
+    if not mm:
+        return date_str
     if day:
-        day_num = int(day)
+        dd = int(day)
     else:
-        import calendar
-        day_num = calendar.monthrange(int(year), int(month))[1]
-
-    return f"{day_num:02d}/{month}/{year}"
+        dd = calendar.monthrange(int(year), int(mm))[1]
+    return f"{dd:02d}/{mm}/{year}"
 
 
 def _extract_receipts(text: str) -> list[dict]:
-    """Parse Textract plain text into structured receipt data."""
-    print(">>> _extract_receipts: Iniciando extracción de recibos")
-    print(f">>> _extract_receipts: Texto de entrada tiene {len(text)} caracteres")
+    """Extract receipts from OCR text using regex patterns for specified cities and omit footers."""
+    # Define cities for header matching
+    cities = [
+        'Palmira', 'Pradera', 'Candelaria', 'Villagorgona', 'Tuluá',
+        'Buenaventura', 'Cartago', 'Guadalajara de Buga', 'Florida',
+        'Santiago de Cali', 'Santiago de cali', 'Cali'
+    ]
     
-    pattern = re.compile(
-        r"Santiago de Ca(?:li|ll),?\s*(?P<fecha>.*?\d{4}).*?"
-        r"DEBE A:\s*(?P<debe_a>.*?)\nLa suma.*?TOTAL\n\$?\.?\s*(?P<total>[\d\.,]+)",
-        re.IGNORECASE | re.DOTALL,
+    # Build city alternation regex, escape spaces
+    city_pattern = '|'.join(re.escape(c) for c in cities)
+
+    header_re = re.compile(
+        rf"""(?m)                           # Multilínea
+        ^(?P<ciudad>{city_pattern})\b      # Captura la ciudad base
+        [^\n,]*,\s*                        # Permite sufijos hasta la coma
+        (?P<fecha>
+            \d{{1,2}}/\d{{1,2}}/\d{{2,4}} |                    # Formato numérico
+            \d{{1,2}}(?:\s+de)?\s+[A-Za-zñáéíóú]+(?:\s+(?:de|del))?\s+\d{{4}}
+        )
+        """,
+        re.IGNORECASE | re.VERBOSE
     )
+    
+    info_re = re.compile(
+        r"Debe\s*A:\s*(?P<nombre>.*?)\r?\n.*?"
+        r"Cédula[:\s]*(?P<cedula>[\d\.\s]+).*?"
+        r"No\.?\s*DE\s*DALE[:\s]*(?P<dale>[\d\s]+)",
+        re.IGNORECASE | re.DOTALL
+    )
+    
+    total_re = re.compile(r"(?mi)(?:La suma de|TOTAL).*?\$?\s*([\d\.,]+)")
 
-    receipts: list[dict] = []
-    matches_found = 0
-    for match in pattern.finditer(text):
-        matches_found += 1
-        print(f">>> _extract_receipts: Encontrada coincidencia #{matches_found}")
-        raw_fecha = match.group("fecha").strip()
-        fecha = _format_spanish_date(raw_fecha)
-        data_block = match.group("debe_a").strip()
-        total = match.group("total").strip()
+    receipts = []
+    headers = list(header_re.finditer(text))
+    
+    for idx, m in enumerate(headers):
+        city_raw = m.group('ciudad').strip()
+        date_raw = m.group('fecha').strip()
+        date_fmt = _format_spanish_date(date_raw)
+
+        start = m.end()
+        end = headers[idx+1].start() if idx+1 < len(headers) else len(text)
+        block = text[start:end]
         
-        print(f">>> _extract_receipts: fecha raw='{raw_fecha}', formateada='{fecha}'")
-        print(f">>> _extract_receipts: total='{total}'")
+        # Remove footer starting at FMR or similar patterns
+        block = re.split(r"\n(?:FMR|FEMR|TEMR|FHR)\b", block)[0]
 
-        name = data_block.splitlines()[0].strip() if data_block else ""
-        cedula_match = re.search(r"Cedula[:\s]*(\d+)", data_block, re.IGNORECASE)
-        cedula = cedula_match.group(1) if cedula_match else None
-        dale_match = re.search(
-            r"No\.?\s*DE\s*DALE:?\s*(\d+)", data_block, re.IGNORECASE
-        )
-        no_de_dale = dale_match.group(1) if dale_match else None
+        info = info_re.search(block)
+        name = info.group('nombre').strip() if info else ''
+        ced = info.group('cedula').replace('.', '').replace(' ', '').strip() if info else None
+        dale = info.group('dale').replace(' ', '').strip() if info else None
 
-        block = match.group(0)
-        turnos_nums = re.findall(r"\n(\d+)\n\d{2}/\d{2}/\d{4}", block)
-        turnos = max(map(int, turnos_nums)) if turnos_nums else None
+        tot_match = total_re.search(block)
+        total = tot_match.group(1).strip() if tot_match else None
 
-        receipts.append(
-            {
-                "fecha": fecha,
-                "nombre": name,
-                "Cedula": cedula,
-                "No. DE DALE": no_de_dale,
-                "Turnos": turnos,
-                "total": total,
-            }
-        )
-
-    print(f">>> _extract_receipts: Total de recibos extraídos: {len(receipts)}")
-    if not receipts:
-        print(">>> _extract_receipts: No se encontraron recibos. Mostrando muestra del texto:")
-        print(f">>> _extract_receipts: Primeros 500 caracteres: {text[:500]}")
+        receipts.append({
+            'ciudad': city_raw,
+            'fecha': date_fmt,
+            'nombre': name,
+            'cedula': ced,
+            'no_de_dale': dale,
+            'total': total,
+        })
     
     return receipts
 
+
 class TextractOCRView(APIView):
-    """Return plain text extracted from a PDF using Amazon Textract."""
+    """APIView for extracting text and parsing receipts with specified cities."""
     parser_classes = [MultiPartParser]
 
     def post(self, request, *args, **kwargs):
-        print(">>> OCR VIEW: Recibida petición POST")
-        file = request.FILES.get('file')
-        if not file:
-            print(">>> OCR VIEW: No se proporcionó archivo")
-            return Response(
-                {"error": "Archivo no proporcionado", "detail": "Se requiere el campo 'file'"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        uploaded = request.FILES.get('file')
+        if not uploaded:
+            return Response({'error':'Archivo no proporcionado','detail':'campo "file" requerido'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
-        print(f">>> OCR VIEW: Archivo recibido - {file.name}, tamaño: {file.size} bytes")
-        parser = TextractOCRParser()
+        bucket = os.getenv('TEXTRACT_S3_BUCKET')
+        if not bucket:
+            return Response({'error':'TEXTRACT_S3_BUCKET no configurado'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        parser = TextractOCRParser(bucket)
         try:
-            print(">>> OCR VIEW: Iniciando procesamiento con TextractOCRParser")
-            payload = parser.parse(file)
-            print(">>> OCR TEXTRACT PAYLOAD:", payload)
+            payload = parser.parse(uploaded)
         except Exception as e:
-            print(">>> OCR TEXTRACT ERROR:", e)
-            return Response(
-                {"error": "Error al procesar el archivo", "detail": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        text = payload.get("text", "")
-        print(f">>> OCR VIEW: Texto extraído, longitud: {len(text)} caracteres")
-        print(f">>> OCR VIEW: Primeros 200 caracteres del texto: {text[:200]}")
-        
-        data = _extract_receipts(text)
-        print(f">>> OCR VIEW: Recibos extraídos: {len(data)} elementos")
-        print(f">>> OCR VIEW: Datos extraídos: {data}")
+            return Response({'error':'Error al procesar OCR','detail':str(e)},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response({"results": data}, status=status.HTTP_200_OK)
+        text = payload.get('text','')
+        try:
+            data = _extract_receipts(text)
+        except Exception as e:
+            return Response({'error':'Error al extraer recibos','detail':str(e)},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'results': data}, status=status.HTTP_200_OK)

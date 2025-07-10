@@ -85,41 +85,39 @@ def parse_func(movimientos):
     for mov in movimientos:
         ref1 = mov.get("referencia1", "").strip()
         ref2 = mov.get("referencia2", "").strip()
-        
+
         # Handle cases where references contain amounts
         ref_parts = []
         amount_from_ref = None
-        
-        # Check if ref1 is an amount
-        if ref1 and not _is_amount(ref1):
-            ref_parts.append(ref1)
-        elif ref1 and _is_amount(ref1):
-            amount_from_ref = ref1
-            print(f"Found amount in referencia1: {ref1}")
-        
-        # Check if ref2 is an amount  
-        if ref2 and not _is_amount(ref2):
-            ref_parts.append(ref2)
-        elif ref2 and _is_amount(ref2):
-            amount_from_ref = ref2
-            print(f"Found amount in referencia2: {ref2}")
-        
-        # Build the reference name from non-amount parts
+
+        # Check if ref2 is an amount
+        if ref2:
+            if _is_amount(ref2):
+                amount_from_ref = ref2
+                print(f"Found amount in referencia2: {ref2}")
+            else:
+                ref_parts.append(ref2)
+
+        # Build the reference name
         if len(ref_parts) >= 2:
-            nombre = f"{ref_parts[0]}-{ref_parts[1]}"
+            # only concatenate if they differ
+            if ref_parts[0] != ref_parts[1]:
+                nombre = f"{ref_parts[0]}-{ref_parts[1]}"
+            else:
+                nombre = ref_parts[0]
         elif len(ref_parts) == 1:
             nombre = ref_parts[0]
         else:
-            # If all references are amounts, use them but mark as amounts
+            # both references were amounts or empty
             if ref1 and ref2:
                 if _is_amount(ref1) and _is_amount(ref2):
-                    nombre = f"MONTO:{ref1}-MONTO:{ref2}"
+                    nombre = f"{ref1}"
                 elif _is_amount(ref1):
-                    nombre = f"MONTO:{ref1}"
+                    nombre = f"{ref1}"
                 elif _is_amount(ref2):
-                    nombre = f"MONTO:{ref2}"
+                    nombre = f"{ref2}"
                 else:
-                    nombre = f"{ref1}-{ref2}"
+                    nombre = ref1  # they are equal non-amounts
             else:
                 nombre = ref1 or ref2
         

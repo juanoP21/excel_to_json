@@ -80,10 +80,12 @@ class PDFTextractView(APIView):
             )
 
         serializer_class = handler.get("serializer")
+        payload["file_name"] = file.name
         if serializer_class is None:
             return Response(payload, status=status.HTTP_200_OK)
 
         serializer = serializer_class(data=payload)
+        payload["file_name"] = file.name
         if serializer.is_valid():
             return Response(payload, status=status.HTTP_200_OK)
 
