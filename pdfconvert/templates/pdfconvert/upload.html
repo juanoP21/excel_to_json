@@ -37,7 +37,9 @@
         {% csrf_token %}
         <div class="mb-3">
             <label for="bank_key" class="form-label">Bank key</label>
-            <input type="text" name="bank_key" id="bank_key" class="form-control" required>
+            <select name="bank_key" id="bank_key" class="form-select" required>
+                <option value="bancolombia_textract">bancolombia_textract</option>
+            </select>
         </div>
         <div class="mb-3">
             <label for="files" class="form-label">PDF files</label>
