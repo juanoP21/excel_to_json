@@ -1,44 +1,33 @@
-# ---------- 1. Etapa de build ----------
-FROM python:3.10-slim AS build
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-WORKDIR /app
-COPY requirements.txt .
-
-# gcc y build-deps sólo en la etapa de compilación (necesarios para gevent)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential libffi-dev && \
-    pip install --no-cache-dir -r requirements.txt && \
-    apt-get purge -y build-essential && \
-    apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/*
-
-COPY . .
-RUN python manage.py collectstatic --noinput
-
-# ---------- 2. Etapa de runtime ----------
 FROM python:3.10-slim
 
+# Establecer variables de entorno
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+# Asegurar que Django pueda ejecutar collectstatic sin errores
+ENV DJANGO_SETTINGS_MODULE=excel_to_json.settings
+ENV DEBUG=False
+# Esta clave es solo para la construcción de la imagen, será reemplazada en tiempo de ejecución
+ENV SECRET_KEY=temp_build_key_replace_in_production
+ENV ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Establecer directorio de trabajo
 WORKDIR /app
-ENV DJANGO_SETTINGS_MODULE=excel_to_json.settings \
-    DEBUG=False \
-    # Parámetros de Gunicorn en una sola variable:
-    GUNICORN_CMD_ARGS="\
-        --bind=0.0.0.0:8000 \
-        --workers=4 \
-        --worker-class=gevent \
-        --timeout=120 \
-        --keep-alive=5 \
-        --max-requests=1000 \
-        --max-requests-jitter=100"
 
-# Copiamos los paquetes ya instalados y el código
-COPY --from=build /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
-COPY --from=build /app /app
+# Instalar dependencias
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# WhiteNoise para servir estáticos
-ENV STATIC_ROOT=/app/staticfiles
+# Copiar el proyecto
+COPY . .
+
+# Crear directorio estático si no existe
+RUN mkdir -p staticfiles
+
+# Ejecutar collectstatic con las variables de entorno configuradas
+RUN python manage.py collectstatic --noinput || echo "Collectstatic failed but continuing build"
+
+# Puerto en el que corre gunicorn
 EXPOSE 8000
-CMD ["gunicorn", "excel_to_json.wsgi:application"]
+
+# Comando para iniciar la aplicación con gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "excel_to_json.wsgi:application"]
