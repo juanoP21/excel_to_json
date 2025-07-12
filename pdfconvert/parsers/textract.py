@@ -8,13 +8,13 @@ from datetime import datetime
 
 
 def _is_amount(text: str) -> bool:
-    """Check if text looks like a monetary amount (e.g., '2,304,747.00') using comma and decimal point."""
+    """Check if text looks like a monetary amount (e.g., '2,304,747.00' or '-227,446,000.00') using comma and decimal point."""
     if not text:
         return False
     text = text.strip()
     # Pattern for amounts: digits with optional commas and mandatory decimal places
-    # Matches formats like '1,234.56' or '123.45' or '12,345,678.90'
-    amount_pattern = r'^\d{1,3}(?:,\d{3})*\.\d{2}$'
+    # Matches formats like '1,234.56' or '123.45' or '12,345,678.90' or '-227,446,000.00'
+    amount_pattern = r'^-?\d{1,3}(?:,\d{3})*\.\d{2}$'
     return bool(re.match(amount_pattern, text))
 
 
@@ -79,12 +79,23 @@ def parse_func(movimientos):
     for mov in movimientos:
         ref1 = mov.get("referencia1", "").strip()
         ref2 = mov.get("referencia2", "").strip()
-        # Exclude monetary amounts (must match comma+decimal) from references
+        
+        # Store original references to check for amounts
+        original_ref1 = ref1
+        original_ref2 = ref2
+        amount_from_ref = None
+        
+        # Check if references contain amounts and save them
         if _is_amount(ref1):
-            ref1 = ""
+            amount_from_ref = ref1
+            ref1 = ""  # Remove from reference display
+            print(f"Found amount in referencia1: {original_ref1}")
         if _is_amount(ref2):
-            ref2 = ""
+            amount_from_ref = ref2
+            ref2 = ""  # Remove from reference display
+            print(f"Found amount in referencia2: {original_ref2}")
 
+        # Build reference name from non-amount parts
         if ref1 and ref2:
             nombre = ref1 if ref1 == ref2 else f"{ref1}-{ref2}"
         else:
@@ -103,6 +114,9 @@ def parse_func(movimientos):
         )
         
         # If no valor found but we have an amount in references, use it
+        if (not raw_val or raw_val.strip() == "0" or raw_val.strip() == "") and amount_from_ref:
+            raw_val = amount_from_ref
+            print(f"Using amount from reference as valor: {amount_from_ref}")
 
         val = _parse_amount(raw_val)
         print(f"Raw value: {raw_val}, parsed value: {val}")
@@ -123,7 +137,6 @@ def parse_func(movimientos):
             "Info_detallada": f"{desc} ".strip(),
             "Info_detallada2": mov.get("sucursal_canal", ""),
         }
-
 
         registros.append((fecha_dt or datetime.max, registro))
     registros.sort(key=lambda r: r[0])
