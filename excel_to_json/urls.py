@@ -16,10 +16,14 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from authapp import views as auth_views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
+    path('api/auth/', include('authapp.urls')),
     path('api/pdf/', include('pdfconvert.urls')),
     path('api/ocr/', include('ocr.urls')),
+    path('profile/', auth_views.ProfileView.as_view(), name='profile'),
 ]
+
