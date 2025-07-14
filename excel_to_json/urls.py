@@ -22,6 +22,9 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
     path('api/auth/', include('authapp.urls')),
+    # Provide a top-level login endpoint for convenience,
+    # mirroring the Express setup used previously.
+    path('login/', auth_views.LoginView.as_view(), name='login-direct'),
     path('api/pdf/', include('pdfconvert.urls')),
     path('api/ocr/', include('ocr.urls')),
     path('profile/', auth_views.ProfileView.as_view(), name='profile'),
