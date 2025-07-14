@@ -110,7 +110,7 @@ class PDFUploadView(View):
             return render(request, self.template_name, {"message": msg, "success": False})
 
         handler = get_handler(bank_key)
-        if not handler:
+        if not handler and bank_key not in EXCEL_ENABLED_BANKS:
             msg = f'Banco "{bank_key}" no soportado.'
             return render(request, self.template_name, {"message": msg, "success": False})
 
