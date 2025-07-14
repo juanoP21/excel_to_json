@@ -14,7 +14,7 @@ MAX_RETRIES = 3
 def process_and_send(bank_key: str, file_name: str, data: bytes) -> None:
     """Parse the PDF if needed and send it to the webhook."""
     file_basename = os.path.basename(file_name)
-    if bank_key == "bancolombia":
+    if bank_key == "bancolombia_textract":
         handler = get_handler(bank_key)
         if not handler:
             raise ValueError(f"Banco '{bank_key}' no soportado")
