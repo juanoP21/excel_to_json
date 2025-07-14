@@ -1,75 +1,59 @@
-# .github/workflows/deploy-to-ec2.yml
-name: Deploy to EC2
+name: Deploy to EC2 with Docker Compose
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-      
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
-        
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
-      
-    - name: Build, tag, and push image to Amazon ECR
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-    
-    - name: Start ssh-agent
-      uses: webfactory/ssh-agent@v0.5.3
-      with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-        
-    - name: Deploy via SSH
-      run: |
-        ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-          # Exportar variables AWS para autenticación
-          export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
-          export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-          export AWS_REGION="${{ secrets.AWS_REGION }}"
-          
-          # Detener contenedor existente si existe
-          docker stop django-app || true
-          docker rm django-app || true
-          
-          # Iniciar sesión en ECR
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
-          
-          # Crear archivo .env con variables desde GitHub Secret
-          echo "${{ secrets.TEXTRACT_S3_BUCKET }}" > /home/ec2-user/.env
-          chmod 600 /home/ec2-user/.env
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-          # Descargar y ejecutar la imagen
-          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
-          
-          docker run -d \
-            --name django-app \
-            --env-file /home/ec2-user/.env \
-            -p 8000:8000 \
-            -e DJANGO_SETTINGS_MODULE="excel_to_json.settings" \
-            -e SECRET_KEY="${{ secrets.DJANGO_SECRET_KEY }}" \
-            -e DEBUG=False \
-            -e ALLOWED_HOSTS="${{ secrets.ALLOWED_HOSTS }}" \
-            ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
-          
-          echo "Despliegue completado exitosamente"
-        EOF
+      - name: Debug secrets (TEMPORAL)
+        run: |
+          echo "EC2_HOST definido: ${{ secrets.EC2_HOST != '' }}"
+          echo "SSH Key definido: ${{ secrets.SSH_PRIVATE_KEY != '' }}"
+          echo "Host: ${{ secrets.EC2_HOST }}"
+
+      - name: Create SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          echo "Archivo creado:"
+          ls -la ~/.ssh/ec2_key
+          echo "Primera línea de la clave:"
+          head -1 ~/.ssh/ec2_key
+          echo "Validando clave:"
+          ssh-keygen -l -f ~/.ssh/ec2_key || echo "Clave inválida"
+
+      - name: Test SSH connection first
+        run: |
+          echo "Probando conexión SSH..."
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'echo "SSH funciona"' || {
+            echo "SSH falló, probando con debug:"
+            ssh -vvv -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'echo "SSH con debug"'
+          }
+
+      - name: Copy files to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+            mkdir -p ~/docker-apps/servers/hojavuelo-nest-server
+          '
+          scp -r -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/docker-apps/servers/hojavuelo-nest-server/
+
+      - name: Build and Deploy with Docker
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+            cd ~/docker-apps
+
+            docker compose stop hojavuelo-nest-server || true
+            docker compose rm -f hojavuelo-nest-server || true
+            docker compose build --no-cache hojavuelo-nest-server
+            docker compose up -d hojavuelo-nest-server
+            docker exec nginx-proxy nginx -s reload
+          '
