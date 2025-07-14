@@ -40,25 +40,32 @@ def _parse_row(row: pd.Series, desc_col: str) -> dict:
     descripcion = str(row.get(desc_col, "")).strip()
     descripcion = descripcion.replace("0", "").strip()
 
-    # Parse date with explicit format to ensure DD/MM/YYYY output
+    # Parse date - handle YYYY/MM/DD format and convert to DD/MM/YYYY
     fecha_formatted = ""
     if fecha:
         try:
-            # Try different date formats commonly used
+            # If date is in YYYY/MM/DD format
             if "/" in fecha:
                 parts = fecha.split("/")
                 if len(parts) == 3:
-                    day, month, year = parts
-                    # Ensure we interpret as DD/MM/YYYY format
-                    fecha_dt = pd.to_datetime(f"{day}/{month}/{year}", format="%d/%m/%Y", errors="coerce")
-                    if fecha_dt is not pd.NaT:
-                        fecha_formatted = fecha_dt.strftime("%d/%m/%Y")
+                    # Check if first part is year (4 digits)
+                    if len(parts[0]) == 4 and parts[0].isdigit():
+                        # YYYY/MM/DD format
+                        year, month, day = parts
+                        fecha_formatted = f"{day.zfill(2)}/{month.zfill(2)}/{year}"
+                    else:
+                        # Assume DD/MM/YYYY format already
+                        fecha_formatted = fecha
+                else:
+                    fecha_formatted = fecha
             else:
-                # Try parsing with dayfirst=True as fallback
-                fecha_dt = pd.to_datetime(fecha, dayfirst=True, errors="coerce")
+                # Try parsing with pandas as fallback
+                fecha_dt = pd.to_datetime(fecha, errors="coerce")
                 if fecha_dt is not pd.NaT:
                     fecha_formatted = fecha_dt.strftime("%d/%m/%Y")
-        except:
+                else:
+                    fecha_formatted = fecha
+        except Exception:
             fecha_formatted = fecha  # Keep original if parsing fails
     
     return {
