@@ -113,8 +113,15 @@ class PDFUploadView(View):
             msg = f'Banco "{bank_key}" no soportado.'
             return render(request, self.template_name, {"message": msg, "success": False})
 
+        params = {
+            "worksheet": request.POST.get("worksheet"),
+            "header_row": request.POST.get("header_row"),
+            "skip_rows": request.POST.get("skip_rows"),
+            "remove_unnamed": request.POST.get("remove_unnamed", "true"),
+        }
+
         for f in files:
-            worker.enqueue(bank_key, f.name, f.read())
+            worker.enqueue(bank_key, f.name, f.read(), params)
 
         msg = f"{len(files)} archivo(s) encolado(s) para procesamiento."
         return render(request, self.template_name, {"message": msg, "success": True})
