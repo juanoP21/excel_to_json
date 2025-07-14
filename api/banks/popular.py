@@ -40,8 +40,27 @@ def _parse_row(row: pd.Series, desc_col: str) -> dict:
     descripcion = str(row.get(desc_col, "")).strip()
     descripcion = descripcion.replace("0", "").strip()
 
-    fecha_dt = pd.to_datetime(fecha, dayfirst=True, errors="coerce")
-    fecha_formatted = fecha_dt.strftime("%d/%m/%Y") if fecha_dt is not pd.NaT else ""
+    # Parse date with explicit format to ensure DD/MM/YYYY output
+    fecha_formatted = ""
+    if fecha:
+        try:
+            # Try different date formats commonly used
+            if "/" in fecha:
+                parts = fecha.split("/")
+                if len(parts) == 3:
+                    day, month, year = parts
+                    # Ensure we interpret as DD/MM/YYYY format
+                    fecha_dt = pd.to_datetime(f"{day}/{month}/{year}", format="%d/%m/%Y", errors="coerce")
+                    if fecha_dt is not pd.NaT:
+                        fecha_formatted = fecha_dt.strftime("%d/%m/%Y")
+            else:
+                # Try parsing with dayfirst=True as fallback
+                fecha_dt = pd.to_datetime(fecha, dayfirst=True, errors="coerce")
+                if fecha_dt is not pd.NaT:
+                    fecha_formatted = fecha_dt.strftime("%d/%m/%Y")
+        except:
+            fecha_formatted = fecha  # Keep original if parsing fails
+    
     return {
         "Fecha": fecha_formatted,
         "importe_credito": credito,
