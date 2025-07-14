@@ -2,11 +2,35 @@ import jwt
 import bcrypt
 import datetime
 from django.conf import settings
+from django.db import connection
 from django.contrib.auth.models import User
 from rest_framework.views import APIView
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
+
 from rest_framework import status
+
+
+def get_usuario_by_email(email: str):
+    """Return a user dict from the custom 'usuario' table."""
+    keys = [
+        'id_usuario',
+        'useremail',
+        'password',
+        'nombre_usuario',
+        'apellidos_usuario',
+        'rol',
+        'proyecto_id_proyecto',
+    ]
+    with connection.cursor() as cursor:
+        cursor.execute(
+            'SELECT id_usuario, useremail, password, nombre_usuario, '
+            'apellidos_usuario, rol, proyecto_id_proyecto '
+            'FROM usuario WHERE LOWER(useremail) = %s',
+            [email],
+        )
+        row = cursor.fetchone()
+    return dict(zip(keys, row)) if row else None
 
 
 class JwtAuthGuard(BasePermission):
@@ -21,7 +45,11 @@ class JwtAuthGuard(BasePermission):
         except ValueError:
             return False
         try:
-            decoded = jwt.decode(token, settings.SECRETKEY, algorithms=['HS256'])
+            decoded = jwt.decode(
+                token,
+                settings.SECRETKEY,
+                algorithms=['HS256'],
+            )
             request.user = User.objects.get(id=decoded.get('id'))
             return True
         except Exception:
@@ -35,14 +63,24 @@ class RegisterView(APIView):
         data = request.data
         password = data.get('password')
         if not password or not data.get('username') or not data.get('email'):
-            return Response({'error': 'Missing fields'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Missing fields'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         user = User.objects.create(
             username=data['username'],
             email=data['email'].lower(),
             password=hashed,
         )
-        return Response({'id': user.id, 'email': user.email, 'username': user.username}, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                'id': user.id,
+                'email': user.email,
+                'username': user.username,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class LoginView(APIView):
@@ -55,23 +93,33 @@ class LoginView(APIView):
         useremail = (useremail or '').lower()
         password = request.data.get('password')
         if not useremail or not password:
-            return Response({'error': 'Missing credentials'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Missing credentials'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        try:
-            user = User.objects.get(email__iexact=useremail)
-        except User.DoesNotExist:
-            return Response({'error': 'Correo electrónico incorrecto'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        if not bcrypt.checkpw(password.encode(), user.password.encode()):
-            return Response({'error': 'Contraseña incorrecta'}, status=status.HTTP_401_UNAUTHORIZED)
+        user = get_usuario_by_email(useremail)
+        if not user:
+            return Response(
+                {'error': 'Correo electrónico incorrecto'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        if not bcrypt.checkpw(password.encode(), user['password'].encode()):
+            return Response(
+                {'error': 'Contraseña incorrecta'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
         user_payload = {
-            'id_usuario': user.id,
-            'useremail': user.email,
-            'nombre_usuario': user.first_name,
-            'apellidos_usuario': user.last_name,
-            'rol': 'admin' if user.is_staff else 'user',
-            'proyecto_id_proyecto': None,
+            key: user.get(key)
+            for key in [
+                'id_usuario',
+                'useremail',
+                'nombre_usuario',
+                'apellidos_usuario',
+                'rol',
+                'proyecto_id_proyecto',
+            ]
         }
 
         jwt_payload = {
