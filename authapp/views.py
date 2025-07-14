@@ -1,5 +1,6 @@
 import jwt
 import bcrypt
+import datetime
 from django.conf import settings
 from django.contrib.auth.models import User
 from rest_framework.views import APIView
@@ -45,26 +46,42 @@ class RegisterView(APIView):
 
 
 class LoginView(APIView):
-    """Authenticate user and return JWT."""
+    """Authenticate user and return JWT following the Express logic."""
 
     def post(self, request, *args, **kwargs):
-        email = request.data.get('email', '').lower()
+        # Accept both 'useremail' (to mirror the Express implementation) and
+        # plain 'email' for backwards compatibility.
+        useremail = request.data.get('useremail') or request.data.get('email')
+        useremail = (useremail or '').lower()
         password = request.data.get('password')
-        if not email or not password:
+        if not useremail or not password:
             return Response({'error': 'Missing credentials'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            user = User.objects.get(email=email)
+            user = User.objects.get(email__iexact=useremail)
         except User.DoesNotExist:
             return Response({'error': 'Correo electrónico incorrecto'}, status=status.HTTP_401_UNAUTHORIZED)
+
         if not bcrypt.checkpw(password.encode(), user.password.encode()):
             return Response({'error': 'Contraseña incorrecta'}, status=status.HTTP_401_UNAUTHORIZED)
-        payload = {
-            'id': user.id,
-            'email': user.email,
-            'username': user.username,
+
+        user_payload = {
+            'id_usuario': user.id,
+            'useremail': user.email,
+            'nombre_usuario': user.first_name,
+            'apellidos_usuario': user.last_name,
+            'rol': 'admin' if user.is_staff else 'user',
+            'proyecto_id_proyecto': None,
         }
-        token = jwt.encode(payload, settings.SECRETKEY, algorithm='HS256')
-        return Response({'serviceToken': token, 'user': payload})
+
+        jwt_payload = {
+            **user_payload,
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1),
+        }
+
+        token = jwt.encode(jwt_payload, settings.SECRETKEY, algorithm='HS256')
+
+        return Response({'serviceToken': token, 'user': user_payload})
 
 
 class ProfileView(APIView):
