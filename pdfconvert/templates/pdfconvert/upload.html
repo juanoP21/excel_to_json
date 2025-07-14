@@ -43,16 +43,40 @@
             <option value="bancolombia_textract">bancolombia_textract</option>
             <option value="bogota">banco bogota</option>
             <option value="davivienda">davivienda</option>
+            <option value="occidente">occidente</option>
+            <option value="agrario">agrario</option>
+            <option value="alianza">alianza</option>
+            <option value="bbva">bbva</option>
+            <option value="avvillas">avvillas</option>
+            <option value="itau">itau</option>
           </select>
         </div>
+        <div id="excel-params" style="display: none;">
+          <div class="mb-3">
+            <label for="worksheet" class="form-label">Worksheet</label>
+            <input type="text" class="form-control" name="worksheet" id="worksheet" />
+          </div>
+          <div class="mb-3">
+            <label for="header_row" class="form-label">Header row</label>
+            <input type="number" class="form-control" name="header_row" id="header_row" min="0" />
+          </div>
+          <div class="mb-3">
+            <label for="skip_rows" class="form-label">Skip rows</label>
+            <input type="number" class="form-control" name="skip_rows" id="skip_rows" min="0" />
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="remove_unnamed" name="remove_unnamed" checked>
+            <label class="form-check-label" for="remove_unnamed">Remove unnamed columns</label>
+          </div>
+        </div>
         <div class="mb-3">
-          <label for="files" class="form-label">PDF files</label>
+          <label for="files" class="form-label">Files</label>
           <input
             type="file"
             name="files"
             id="files"
             class="form-control"
-            accept="application/pdf"
+            accept="application/pdf,.csv,.xls,.xlsx"
             multiple
             required
           />
@@ -65,9 +89,31 @@
         <span class="visually-hidden">Loading...</span>
       </div>
     </div>
-    <script>
+  <script>
       const form = document.getElementById("upload-form");
       const loading = document.getElementById("loading");
+      const bankSelect = document.getElementById("bank_key");
+      const excelParams = document.getElementById("excel-params");
+      const excelBanks = [
+        "occidente",
+        "agrario",
+        "alianza",
+        "bbva",
+        "avvillas",
+        "itau",
+      ];
+
+      function toggleParams() {
+        if (excelBanks.includes(bankSelect.value)) {
+          excelParams.style.display = "block";
+        } else {
+          excelParams.style.display = "none";
+        }
+      }
+
+      bankSelect.addEventListener("change", toggleParams);
+      toggleParams();
+
       form.addEventListener("submit", function () {
         loading.style.display = "flex";
       });
