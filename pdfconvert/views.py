@@ -6,6 +6,7 @@ from django.views import View
 from django.shortcuts import render
 
 from pdfconvert.tasks import worker
+from api.banks.registry import EXCEL_ENABLED_BANKS
 
 from pdfconvert.parsers.plaintext import PlainTextParser
 from pdfconvert.registry          import get_handler
@@ -113,12 +114,14 @@ class PDFUploadView(View):
             msg = f'Banco "{bank_key}" no soportado.'
             return render(request, self.template_name, {"message": msg, "success": False})
 
-        params = {
-            "worksheet": request.POST.get("worksheet"),
-            "header_row": request.POST.get("header_row"),
-            "skip_rows": request.POST.get("skip_rows"),
-            "remove_unnamed": request.POST.get("remove_unnamed", "true"),
-        }
+        params = {}
+        if bank_key in EXCEL_ENABLED_BANKS:
+            params = {
+                "worksheet": request.POST.get("worksheet"),
+                "header_row": request.POST.get("header_row"),
+                "skip_rows": request.POST.get("skip_rows"),
+                "remove_unnamed": request.POST.get("remove_unnamed", "true"),
+            }
 
         for f in files:
             worker.enqueue(bank_key, f.name, f.read(), params)

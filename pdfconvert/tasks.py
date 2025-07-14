@@ -4,37 +4,14 @@ import time
 from io import BytesIO
 import os
 import requests
-import pandas as pd
 
 from .registry import get_handler
-from api.banks.registry import get_processor
+from api.banks.registry import get_processor, EXCEL_ENABLED_BANKS
+from api.utils import read_table
 
 WEBHOOK_URL = "https://automatizacion.commerk.com:4444/webhook/8dafec2e-f35a-4c3c-bcae-2a395effe7e6"
 MAX_RETRIES = 3
-EXCEL_BANKS = {
-    "occidente",
-    "agrario",
-    "alianza",
-    "bbva",
-    "avvillas",
-    "itau",
-}
 
-
-def _read_file(buf: BytesIO, ext: str, sheet: str | None, header: int, skip: int | None) -> pd.DataFrame:
-    """Read an Excel/CSV file into a DataFrame."""
-    if ext == ".csv":
-        return pd.read_csv(buf, header=header, skiprows=skip)
-    engine = "openpyxl"
-    if ext == ".xls":
-        engine = "xlrd"
-    return pd.read_excel(
-        buf,
-        sheet_name=(int(sheet) if sheet and sheet.isdigit() else sheet),
-        header=header,
-        skiprows=skip,
-        engine=engine,
-    )
 
 
 def process_and_send(bank_key: str, file_name: str, data: bytes, params: dict | None = None) -> None:
@@ -54,7 +31,7 @@ def process_and_send(bank_key: str, file_name: str, data: bytes, params: dict | 
         requests.post(WEBHOOK_URL, json=payload, timeout=10)
         return
 
-    if bank_key in EXCEL_BANKS:
+    if bank_key in EXCEL_ENABLED_BANKS:
         ext = os.path.splitext(file_name)[1].lower()
         sheet = params.get("worksheet")
         header = params.get("header_row", 0)
@@ -64,7 +41,7 @@ def process_and_send(bank_key: str, file_name: str, data: bytes, params: dict | 
         remove_unnamed = str(params.get("remove_unnamed", "true")).lower() == "true"
 
         with BytesIO(data) as buf:
-            df = _read_file(buf, ext, sheet, header, skip)
+            df = read_table(buf, ext, sheet, header, skip)
 
         processor = get_processor(bank_key)
         if processor:

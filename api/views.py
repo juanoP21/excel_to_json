@@ -5,7 +5,8 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status
 
-from .banks.registry import get_processor
+from .banks.registry import get_processor, EXCEL_ENABLED_BANKS
+from .utils import read_table
 
 class ExcelToJsonView(APIView):
   
@@ -31,7 +32,7 @@ class ExcelToJsonView(APIView):
 
         try:
             # Leer el archivo
-            df = self._read_file(excel_file, ext, sheet, header, skip)
+            df = read_table(excel_file, ext, sheet, header, skip)
 
             # Aplicar procesamiento específico del banco si existe
             processor = get_processor(branch)
@@ -46,22 +47,8 @@ class ExcelToJsonView(APIView):
 
             # Respuesta JSON
             records = df.to_dict(orient='records')
-            key = 'movimientos' if branch in ('occidente', 'agrario','alianza','bbva','avvillas','itau') else 'data'
+            key = 'movimientos' if branch in EXCEL_ENABLED_BANKS else 'data'
             return Response({key: records}, status=status.HTTP_200_OK)
 
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def _read_file(self, file, ext, sheet, header, skip):
-        if ext == '.csv':
-            return pd.read_csv(file, header=header, skiprows=skip)
-        engine = 'openpyxl'
-        if ext == '.xls':
-            engine = 'xlrd'
-        return pd.read_excel(
-            file,
-            sheet_name=(int(sheet) if sheet and sheet.isdigit() else sheet),
-            header=header,
-            skiprows=skip,
-            engine=engine,
-        )
