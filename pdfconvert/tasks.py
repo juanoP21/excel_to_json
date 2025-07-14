@@ -27,7 +27,7 @@ class UploadWorker:
             handler = get_handler(bank_key)
             if not handler:
                 err = ValueError(f"Banco '{bank_key}' no soportado")
-                self._report_error(file_name, err)
+                self._report_error(bank_key, file_name, err)
                 self.queue.task_done()
                 continue
 
@@ -37,22 +37,25 @@ class UploadWorker:
                     with BytesIO(data) as f:
                         payload = parser.parse(f)
                     payload["file_name"] = file_name
-                    requests.post(WEBHOOK_URL, json=payload, timeout=10)
+                    headers = {"bank-name": bank_key}
+                    requests.post(WEBHOOK_URL, json=payload, headers=headers, timeout=10)
                     break
                 except Exception as e:
                     print(f"Processing error on attempt {attempt} for {file_name}:", e)
                     if attempt < MAX_RETRIES:
                         time.sleep(2)
                     else:
-                        self._report_error(file_name, e)
+                        self._report_error(bank_key, file_name, e)
 
             self.queue.task_done()
 
-    def _report_error(self, file_name: str, exc: Exception) -> None:
+    def _report_error(self, bank_key: str, file_name: str, exc: Exception) -> None:
         try:
+            headers = {"bank-name": bank_key}
             requests.post(
                 WEBHOOK_URL,
                 json={"error": str(exc), "file": file_name},
+                headers=headers,
                 timeout=10,
             )
         except Exception as e2:
