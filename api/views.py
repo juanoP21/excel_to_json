@@ -66,5 +66,3 @@ class ExcelToJsonView(APIView):
             skiprows=skip,
             engine=engine,
         )
-
-
