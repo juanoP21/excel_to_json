@@ -9,6 +9,27 @@ from .registry import get_handler
 WEBHOOK_URL = "https://automatizacion.commerk.com:4444/webhook/8dafec2e-f35a-4c3c-bcae-2a395effe7e6"
 MAX_RETRIES = 3
 
+
+def process_and_send(bank_key: str, file_name: str, data: bytes) -> None:
+    """Parse the PDF if needed and send it to the webhook."""
+    handler = get_handler(bank_key)
+    if not handler:
+        raise ValueError(f"Banco '{bank_key}' no soportado")
+
+    if bank_key == "bancolombia":
+        parser = handler["parser"]
+        with BytesIO(data) as f:
+            payload = parser.parse(f)
+        payload["file_name"] = file_name
+        requests.post(WEBHOOK_URL, json=payload, timeout=10)
+    else:
+        requests.post(
+            WEBHOOK_URL,
+            files={"file": (file_name, data)},
+            data={"bank_key": bank_key},
+            timeout=10,
+        )
+
 class UploadWorker:
     """Background worker that processes uploaded PDFs sequentially."""
 
@@ -24,20 +45,9 @@ class UploadWorker:
     def _run(self) -> None:
         while True:
             bank_key, file_name, data = self.queue.get()
-            handler = get_handler(bank_key)
-            if not handler:
-                err = ValueError(f"Banco '{bank_key}' no soportado")
-                self._report_error(file_name, err)
-                self.queue.task_done()
-                continue
-
-            parser = handler["parser"]
             for attempt in range(1, MAX_RETRIES + 1):
                 try:
-                    with BytesIO(data) as f:
-                        payload = parser.parse(f)
-                    payload["file_name"] = file_name
-                    requests.post(WEBHOOK_URL, json=payload, timeout=10)
+                    process_and_send(bank_key, file_name, data)
                     break
                 except Exception as e:
                     print(f"Processing error on attempt {attempt} for {file_name}:", e)
