@@ -2,6 +2,7 @@ import threading
 import queue
 import time
 from io import BytesIO
+import os
 import requests
 
 from .registry import get_handler
@@ -12,6 +13,7 @@ MAX_RETRIES = 3
 
 def process_and_send(bank_key: str, file_name: str, data: bytes) -> None:
     """Parse the PDF if needed and send it to the webhook."""
+    file_basename = os.path.basename(file_name)
     if bank_key == "bancolombia":
         handler = get_handler(bank_key)
         if not handler:
@@ -20,13 +22,13 @@ def process_and_send(bank_key: str, file_name: str, data: bytes) -> None:
         parser = handler["parser"]
         with BytesIO(data) as f:
             payload = parser.parse(f)
-        payload["file_name"] = file_name
+        payload["file_name"] = file_basename
         requests.post(WEBHOOK_URL, json=payload, timeout=10)
     else:
         requests.post(
             WEBHOOK_URL,
-            files={"file": (file_name, data)},
-            data={"bank_key": bank_key},
+            files={"file": (file_basename, data, "application/pdf")},
+            data={"bank_key": bank_key, "file_name": file_basename},
             timeout=10,
         )
 
