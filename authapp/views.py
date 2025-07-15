@@ -3,7 +3,6 @@ import bcrypt
 import datetime
 from django.conf import settings
 from django.db import connection
-from django.contrib.auth.models import User
 from rest_framework.views import APIView
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
@@ -63,26 +62,88 @@ class RegisterView(APIView):
 
     def post(self, request, *args, **kwargs):
         data = request.data
+        
+        # Get all the fields from request body (like Express)
         password = data.get('password')
-        if not password or not data.get('username') or not data.get('email'):
+        nombre_usuario = data.get('nombre_usuario')
+        apellidos_usuario = data.get('apellidos_usuario')
+        googleid = data.get('googleid')
+        useremail = data.get('useremail')
+        userimg = data.get('userimg')
+        username = data.get('username')
+        telefono_usuario = data.get('telefono_usuario')
+        documento_usuario = data.get('documento_usuario')
+        tipo_usuario_id_tipo_usuario = data.get('tipo_usuario_id_tipo_usuario')
+        proyecto_id_proyecto = data.get('proyecto_id_proyecto')
+        estado_usuario = data.get('estado_usuario')
+        rol = data.get('rol')
+        disponibilidad = data.get('disponibilidad')
+        
+        if not password:
             return Response(
-                {'error': 'Missing fields'},
+                {'error': 'Password is required'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        user = User.objects.create(
-            username=data['username'],
-            email=data['email'].lower(),
-            password=hashed,
-        )
-        return Response(
-            {
-                'id': user.id,
-                'email': user.email,
-                'username': user.username,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        
+        try:
+            # Hash password like Express (bcrypt with salt rounds 10)
+            hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+            
+            # Insert into usuario table with all fields
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO usuario (
+                        password,
+                        nombre_usuario,
+                        apellidos_usuario,
+                        googleid,
+                        useremail,
+                        userimg,
+                        username,
+                        telefono_usuario,
+                        documento_usuario,
+                        tipo_usuario_id_tipo_usuario,
+                        proyecto_id_proyecto,
+                        estado_usuario,
+                        rol,
+                        disponibilidad
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                    RETURNING id_usuario, useremail, nombre_usuario, apellidos_usuario, username, rol
+                """, [
+                    hashed_password,
+                    nombre_usuario,
+                    apellidos_usuario,
+                    googleid,
+                    useremail,
+                    userimg,
+                    username,
+                    telefono_usuario,
+                    documento_usuario,
+                    tipo_usuario_id_tipo_usuario,
+                    proyecto_id_proyecto,
+                    estado_usuario,
+                    rol,
+                    disponibilidad
+                ])
+                
+                # Get the returned row
+                row = cursor.fetchone()
+                if row:
+                    keys = ['id_usuario', 'useremail', 'nombre_usuario', 'apellidos_usuario', 'username', 'rol']
+                    new_user = dict(zip(keys, row))
+                    return Response(new_user, status=status.HTTP_201_CREATED)
+                else:
+                    return Response(
+                        {'error': 'Failed to create user'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                    
+        except Exception as err:
+            print(f"Register error: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class LoginView(APIView):
