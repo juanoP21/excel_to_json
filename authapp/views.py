@@ -243,3 +243,120 @@ class RoleAuthGuard(BasePermission):
             return True
         else:
             return False
+
+class UsuariosListaProyectoView(APIView):
+    """Get users list by project ID."""
+    
+    def get(self, request, proyecto, *args, **kwargs):
+        try:
+            # Convert proyecto to integer (like Express)
+            proyecto = int(proyecto)
+        except ValueError:
+            return Response(
+                {'error': 'Invalid project ID'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT
+                        usuario.id_usuario,
+                        usuario.nombre_usuario,
+                        usuario.apellidos_usuario,
+                        usuario.googleid,
+                        usuario.useremail,
+                        usuario.userimg,
+                        usuario.username,
+                        usuario.telefono_usuario,
+                        usuario.documento_usuario,
+                        usuario.tipo_usuario_id_tipo_usuario,
+                        usuario.proyecto_id_proyecto,
+                        usuario.estado_usuario,
+                        tipo_usuario.tipo_usuario,
+                        tipo_usuario.id_tipo_usuario,
+                        proyecto.nombre_proyecto,
+                        proyecto.descripcion_proyecto
+                    FROM 
+                        usuario
+                    INNER JOIN 
+                        tipo_usuario ON usuario.tipo_usuario_id_tipo_usuario = tipo_usuario.id_tipo_usuario
+                    INNER JOIN 
+                        proyecto ON usuario.proyecto_id_proyecto = proyecto.id_proyecto
+                    WHERE 
+                        usuario.proyecto_id_proyecto = %s
+                """, [proyecto])
+                
+                rows = cursor.fetchall()
+                
+                # Convert to list of dictionaries (like Express rows)
+                keys = [
+                    'id_usuario', 'nombre_usuario', 'apellidos_usuario', 'googleid',
+                    'useremail', 'userimg', 'username', 'telefono_usuario',
+                    'documento_usuario', 'tipo_usuario_id_tipo_usuario', 'proyecto_id_proyecto',
+                    'estado_usuario', 'tipo_usuario', 'id_tipo_usuario',
+                    'nombre_proyecto', 'descripcion_proyecto'
+                ]
+                
+                usuarios = [dict(zip(keys, row)) for row in rows]
+                return Response(usuarios)
+                
+        except Exception as err:
+            print(f"Error getting users by project: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class UsuariosListView(APIView):
+    """Get all users with authentication and authorization."""
+    
+    permission_classes = [RoleAuthGuard]
+    
+    def get(self, request, *args, **kwargs):
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT
+                        usuario.id_usuario,
+                        usuario.nombre_usuario,
+                        usuario.apellidos_usuario,
+                        usuario.googleid,
+                        usuario.useremail,
+                        usuario.userimg,
+                        usuario.username,
+                        usuario.telefono_usuario,
+                        usuario.documento_usuario,
+                        usuario.tipo_usuario_id_tipo_usuario,
+                        usuario.proyecto_id_proyecto,
+                        usuario.estado_usuario,
+                        tipo_usuario.tipo_usuario,
+                        tipo_usuario.id_tipo_usuario,
+                        proyecto.nombre_proyecto,
+                        proyecto.descripcion_proyecto
+                    FROM usuario
+                    INNER JOIN tipo_usuario ON usuario.tipo_usuario_id_tipo_usuario = tipo_usuario.id_tipo_usuario
+                    INNER JOIN proyecto ON usuario.proyecto_id_proyecto = proyecto.id_proyecto
+                """)
+                
+                rows = cursor.fetchall()
+                
+                # Convert to list of dictionaries (like Express rows)
+                keys = [
+                    'id_usuario', 'nombre_usuario', 'apellidos_usuario', 'googleid',
+                    'useremail', 'userimg', 'username', 'telefono_usuario',
+                    'documento_usuario', 'tipo_usuario_id_tipo_usuario', 'proyecto_id_proyecto',
+                    'estado_usuario', 'tipo_usuario', 'id_tipo_usuario',
+                    'nombre_proyecto', 'descripcion_proyecto'
+                ]
+                
+                usuarios = [dict(zip(keys, row)) for row in rows]
+                return Response(usuarios)
+                
+        except Exception as err:
+            print(f"Error getting all users: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
