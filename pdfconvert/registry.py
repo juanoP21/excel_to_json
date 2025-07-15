@@ -1,6 +1,6 @@
 from pdfconvert.parsers.bancolombia import ParserBancolombia
 from pdfconvert.serializers.bancolombia import BancolombiaSerializer
-from pdfconvert.parsers.textract import TextractParser, parse_func
+from pdfconvert.parsers.textract import TextractParser
 
 from pdfconvert.utils.parse_bancolombia import parse_bancolombia, parse_bancolombia_transformado
 from pdfconvert.parsers.davivienda import ParserDavivienda
@@ -19,8 +19,6 @@ from pdfconvert.utils.parse_casa_bolsa import (
     parse_casa_bolsa_transformado,
 )
 
-from pdfconvert.parsers.textract import parse_func
-
 HANDLERS = {
     'bancolombia': {
         'parser':    ParserBancolombia(parse_func=parse_bancolombia),
@@ -35,7 +33,7 @@ HANDLERS = {
         'serializer': None,
     },
     'bancolombia_textract': {
-        'parser':    TextractParser(parse_func=parse_func),
+        'parser':    TextractParser(parse_func=parse_bancolombia_transformado),
         'serializer': None,
     },
     'davivienda_transformado': {

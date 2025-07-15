@@ -56,40 +56,36 @@ class PDFTextractView(APIView):
     parser_classes = [MultiPartParser]
 
     def post(self, request, bank_key, *args, **kwargs):
-        handler = get_handler(bank_key)
-        if not handler:
-            return Response(
-                {"error": f'Banco "{bank_key}" no soportado.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        file = request.FILES.get('file')
+        print(f">>> PDFTextractView called with bank_key: {bank_key}")
+        print(f">>> Request FILES: {list(request.FILES.keys())}")
+        print(f">>> Request POST: {dict(request.POST)}")
+        
+        file = request.FILES.get('file') or request.FILES.get('files')
         if not file:
+            print(">>> No file found in request.FILES")
+            print(f">>> Available files: {list(request.FILES.keys())}")
             return Response(
-                {"error": "Archivo no proporcionado", "detail": "Se requiere el campo 'file'"},
+                {"error": "Archivo no proporcionado", "detail": "Se requiere el campo 'file' o 'files'"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        print(f">>> File received: {file.name}, size: {file.size} bytes")
+        
+        # Enqueue the file for processing with the worker
         try:
-            payload = handler["parser"].parse(file)
+            worker.enqueue(bank_key, file.name, file.read())
+            print(f">>> File enqueued for processing: {file.name}")
+            return Response({
+                "message": f"Archivo {file.name} encolado para procesamiento",
+                "bank_key": bank_key,
+                "file_name": file.name
+            }, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            print(">>> TEXTRACT PARSE ERROR:", str(e))
+            print(f">>> Error enqueueing file: {str(e)}")
             return Response(
-                {"error": "Error al procesar el archivo", "detail": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Error al encolar el archivo", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-        serializer_class = handler.get("serializer")
-        payload["file_name"] = file.name
-        if serializer_class is None:
-            return Response(payload, status=status.HTTP_200_OK)
-
-        serializer = serializer_class(data=payload)
-        payload["file_name"] = file.name
-        if serializer.is_valid():
-            return Response(payload, status=status.HTTP_200_OK)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PDFUploadView(View):
@@ -108,11 +104,7 @@ class PDFUploadView(View):
             msg = "Debe proporcionar el banco y al menos un archivo PDF."
             return render(request, self.template_name, {"message": msg, "success": False})
 
-        handler = get_handler(bank_key)
-        if not handler:
-            msg = f'Banco "{bank_key}" no soportado.'
-            return render(request, self.template_name, {"message": msg, "success": False})
-
+        # Enqueue all files for processing - let the worker handle validation
         for f in files:
             worker.enqueue(bank_key, f.name, f.read())
 

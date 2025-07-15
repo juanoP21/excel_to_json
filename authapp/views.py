@@ -50,25 +50,8 @@ class JwtAuthGuard(BasePermission):
                 settings.SECRETKEY,
                 algorithms=['HS256'],
             )
-            # Get user from usuario table using id_usuario
-            user_id = decoded.get('id_usuario')
-            if not user_id:
-                return False
-            
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    'SELECT id_usuario, useremail, nombre_usuario, apellidos_usuario, rol, proyecto_id_proyecto '
-                    'FROM usuario WHERE id_usuario = %s',
-                    [user_id],
-                )
-                row = cursor.fetchone()
-            
-            if not row:
-                return False
-                
-            # Create a user-like object for request.user
-            keys = ['id_usuario', 'useremail', 'nombre_usuario', 'apellidos_usuario', 'rol', 'proyecto_id_proyecto']
-            request.user = dict(zip(keys, row))
+            # Store the decoded JWT data directly as req.user (like Express)
+            request.user = decoded
             return True
         except Exception as e:
             print(f"JWT Auth error: {e}")
@@ -157,16 +140,8 @@ class ProfileView(APIView):
     permission_classes = [JwtAuthGuard]
 
     def get(self, request, *args, **kwargs):
-        user = request.user
-        payload = {
-            'id_usuario': user.get('id_usuario'),
-            'useremail': user.get('useremail'),
-            'nombre_usuario': user.get('nombre_usuario'),
-            'apellidos_usuario': user.get('apellidos_usuario'),
-            'rol': user.get('rol'),
-            'proyecto_id_proyecto': user.get('proyecto_id_proyecto'),
-        }
-        return Response(payload)
+        # Return the decoded JWT user data (like Express)
+        return Response({'user': request.user})
 
 class UsuarioDetailView(APIView):
     """Get user details by ID."""
@@ -189,3 +164,21 @@ class UsuarioDetailView(APIView):
         user_data = dict(zip(keys, row))
         
         return Response(user_data)
+
+class RoleAuthGuard(BasePermission):
+    """Authorization guard for specific roles."""
+    
+    def has_permission(self, request, view):
+        # First check JWT authentication
+        jwt_guard = JwtAuthGuard()
+        if not jwt_guard.has_permission(request, view):
+            return False
+            
+        # Check if user has required role
+        user_role = request.user.get('rol')
+        allowed_roles = ['adminSistemas', 'usuario', 'aprobador_cargue']
+        
+        if user_role in allowed_roles:
+            return True
+        else:
+            return False
