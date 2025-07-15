@@ -50,9 +50,28 @@ class JwtAuthGuard(BasePermission):
                 settings.SECRETKEY,
                 algorithms=['HS256'],
             )
-            request.user = User.objects.get(id=decoded.get('id'))
+            # Get user from usuario table using id_usuario
+            user_id = decoded.get('id_usuario')
+            if not user_id:
+                return False
+            
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    'SELECT id_usuario, useremail, nombre_usuario, apellidos_usuario, rol, proyecto_id_proyecto '
+                    'FROM usuario WHERE id_usuario = %s',
+                    [user_id],
+                )
+                row = cursor.fetchone()
+            
+            if not row:
+                return False
+                
+            # Create a user-like object for request.user
+            keys = ['id_usuario', 'useremail', 'nombre_usuario', 'apellidos_usuario', 'rol', 'proyecto_id_proyecto']
+            request.user = dict(zip(keys, row))
             return True
-        except Exception:
+        except Exception as e:
+            print(f"JWT Auth error: {e}")
             return False
 
 
@@ -140,8 +159,33 @@ class ProfileView(APIView):
     def get(self, request, *args, **kwargs):
         user = request.user
         payload = {
-            'id': user.id,
-            'email': user.email,
-            'username': user.username,
+            'id_usuario': user.get('id_usuario'),
+            'useremail': user.get('useremail'),
+            'nombre_usuario': user.get('nombre_usuario'),
+            'apellidos_usuario': user.get('apellidos_usuario'),
+            'rol': user.get('rol'),
+            'proyecto_id_proyecto': user.get('proyecto_id_proyecto'),
         }
         return Response(payload)
+
+class UsuarioDetailView(APIView):
+    """Get user details by ID."""
+    def get(self, request, id_usuario, *args, **kwargs):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'SELECT id_usuario, useremail, nombre_usuario, apellidos_usuario, rol, proyecto_id_proyecto '
+                'FROM usuario WHERE id_usuario = %s',
+                [id_usuario]
+            )
+            row = cursor.fetchone()
+        
+        if not row:
+            return Response(
+                {'error': 'Usuario no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        keys = ['id_usuario', 'useremail', 'nombre_usuario', 'apellidos_usuario', 'rol', 'proyecto_id_proyecto']
+        user_data = dict(zip(keys, row))
+        
+        return Response(user_data)
