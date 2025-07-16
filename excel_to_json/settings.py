@@ -157,15 +157,8 @@ if TEXTRACT_S3_BUCKET:
     print(">>> TEXTRACT_S3_BUCKET:", TEXTRACT_S3_BUCKET)
 
 # CORS Configuration
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "https://transacciones.commerk.com",
-    "http://18.189.141.181:8000",
-    "https://18.189.141.181:8000",
-]
+# Allow any origin
+CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_CREDENTIALS = True
 
