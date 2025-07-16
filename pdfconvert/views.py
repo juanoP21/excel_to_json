@@ -1,3 +1,4 @@
+
 from rest_framework.views   import APIView
 from rest_framework.response import Response
 from rest_framework          import status
@@ -55,61 +56,40 @@ class PDFTextractView(APIView):
     parser_classes = [MultiPartParser]
 
     def post(self, request, bank_key, *args, **kwargs):
-        print(f">>> PDFTextractView called with bank_key: {bank_key}")
-        print(f">>> Request FILES: {list(request.FILES.keys())}")
-        print(f">>> Request POST: {dict(request.POST)}")
-        
-        # Handle both single and multiple files
-        files = request.FILES.getlist('files') or request.FILES.getlist('file')
-        if not files:
-            # Fallback to single file for backwards compatibility
-            single_file = request.FILES.get('file') or request.FILES.get('files')
-            if single_file:
-                files = [single_file]
-        
-        if not files:
-            print(">>> No files found in request.FILES")
-            print(f">>> Available files: {list(request.FILES.keys())}")
+        handler = get_handler(bank_key)
+        if not handler:
             return Response(
-                {"error": "Archivo no proporcionado", "detail": "Se requiere el campo 'file' o 'files'"},
+                {"error": f'Banco "{bank_key}" no soportado.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        file = request.FILES.get('file')
+        if not file:
+            return Response(
+                {"error": "Archivo no proporcionado", "detail": "Se requiere el campo 'file'"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        print(f">>> {len(files)} file(s) received")
-        
-        # Enqueue all files for processing
-        enqueued_files = []
-        failed_files = []
-        
-        for file in files:
-            try:
-                print(f">>> Processing file: {file.name}, size: {file.size} bytes")
-                worker.enqueue(bank_key, file.name, file.read())
-                enqueued_files.append(file.name)
-                print(f">>> File enqueued for processing: {file.name}")
-            except Exception as e:
-                failed_files.append({"file": file.name, "error": str(e)})
-                print(f">>> Error enqueueing file {file.name}: {str(e)}")
+        try:
+            payload = handler["parser"].parse(file)
+        except Exception as e:
+            print(">>> TEXTRACT PARSE ERROR:", str(e))
+            return Response(
+                {"error": "Error al procesar el archivo", "detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # Prepare response
-        if enqueued_files and not failed_files:
-            message = f"✅ {len(enqueued_files)} archivo(s) encolado(s) para procesamiento"
-            response_status = status.HTTP_202_ACCEPTED
-        elif enqueued_files and failed_files:
-            message = f"⚠️ {len(enqueued_files)} archivo(s) encolado(s), {len(failed_files)} fallaron"
-            response_status = status.HTTP_202_ACCEPTED
-        else:
-            message = f"❌ No se pudo encolar ningún archivo"
-            response_status = status.HTTP_400_BAD_REQUEST
+        serializer_class = handler.get("serializer")
+        payload["file_name"] = file.name
+        if serializer_class is None:
+            return Response(payload, status=status.HTTP_200_OK)
 
-        return Response({
-            "message": message,
-            "bank_key": bank_key,
-            "enqueued_files": enqueued_files,
-            "failed_files": failed_files,
-            "total_files": len(files),
-            "queue_size": worker.get_queue_status()["queue_size"]
-        }, status=response_status)
+        serializer = serializer_class(data=payload)
+        payload["file_name"] = file.name
+        if serializer.is_valid():
+            return Response(payload, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PDFUploadView(View):
@@ -128,55 +108,15 @@ class PDFUploadView(View):
             msg = "Debe proporcionar el banco y al menos un archivo PDF."
             return render(request, self.template_name, {"message": msg, "success": False})
 
-        # Enqueue all files for processing - let the worker handle validation
-        enqueued_files = []
-        failed_files = []
-        
+        handler = get_handler(bank_key)
+        if not handler:
+            msg = f'Banco "{bank_key}" no soportado.'
+            return render(request, self.template_name, {"message": msg, "success": False})
+
         for f in files:
-            try:
-                worker.enqueue(bank_key, f.name, f.read())
-                enqueued_files.append(f.name)
-                print(f">>> Successfully enqueued: {f.name}")
-            except Exception as e:
-                failed_files.append({"file": f.name, "error": str(e)})
-                print(f">>> Failed to enqueue {f.name}: {str(e)}")
+            worker.enqueue(bank_key, f.name, f.read())
 
-        # Prepare response message
-        if enqueued_files and not failed_files:
-            msg = f"✅ {len(enqueued_files)} archivo(s) encolado(s) correctamente para procesamiento."
-            success = True
-        elif enqueued_files and failed_files:
-            msg = f"⚠️ {len(enqueued_files)} archivo(s) encolado(s), {len(failed_files)} fallaron."
-            success = True
-        else:
-            msg = f"❌ No se pudo encolar ningún archivo. Errores: {failed_files}"
-            success = False
-
-        return render(request, self.template_name, {
-            "message": msg, 
-            "success": success,
-            "enqueued_files": enqueued_files,
-            "failed_files": failed_files,
-            "queue_size": worker.get_queue_status()["queue_size"]
-        })
-
-
-class QueueStatusView(APIView):
-    """API endpoint to check the current status of the processing queue."""
-    
-    def get(self, request, *args, **kwargs):
-        """Get current queue status."""
-        try:
-            status_info = worker.get_queue_status()
-            return Response({
-                "status": "ok",
-                "queue_status": status_info,
-                "message": f"Queue has {status_info['queue_size']} pending files"
-            }, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({
-                "status": "error",
-                "error": str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        msg = f"{len(files)} archivo(s) encolado(s) para procesamiento."
+        return render(request, self.template_name, {"message": msg, "success": True})
 
 
