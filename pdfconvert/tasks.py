@@ -7,7 +7,7 @@ import requests
 
 from .registry import get_handler
 
-WEBHOOK_URL = "https://automatizacion.commerk.com:4444/webhook-test/8dafec2e-f35a-4c3c-bcae-2a395effe7e6"
+WEBHOOK_URL = "https://automatizacion.commerk.com:4444/webhook/8dafec2e-f35a-4c3c-bcae-2a395effe7e6"
 MAX_RETRIES = 3
 
 
