@@ -360,3 +360,416 @@ class UsuariosListView(APIView):
                 {'error': 'Internal server error'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+# ===========================================
+# PROYECTO ENDPOINTS
+# ===========================================
+
+class ProyectoNuevoView(APIView):
+    """Create new project."""
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            nombre_proyecto = data.get('nombre_proyecto')
+            descripcion_proyecto = data.get('descripcion_proyecto')
+            estado_proyecto = data.get('estado_proyecto')
+            
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO proyecto
+                    (nombre_proyecto, descripcion_proyecto, estado_proyecto)
+                    VALUES (%s, %s, %s) RETURNING *
+                """, [nombre_proyecto, descripcion_proyecto, estado_proyecto])
+                
+                row = cursor.fetchone()
+                if row:
+                    keys = ['id_proyecto', 'nombre_proyecto', 'descripcion_proyecto', 'estado_proyecto']
+                    proyecto = dict(zip(keys, row))
+                    return Response(proyecto, status=status.HTTP_201_CREATED)
+                    
+        except Exception as err:
+            print(f"Error creating project: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ProyectoListaView(APIView):
+    """Get all projects."""
+    
+    def get(self, request, *args, **kwargs):
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM proyecto")
+                rows = cursor.fetchall()
+                
+                keys = ['id_proyecto', 'nombre_proyecto', 'descripcion_proyecto', 'estado_proyecto']
+                proyectos = [dict(zip(keys, row)) for row in rows]
+                return Response(proyectos)
+                
+        except Exception as err:
+            print(f"Error getting projects: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ProyectoEditarView(APIView):
+    """Edit project."""
+    
+    def put(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            id_proyecto = data.get('id_proyecto')
+            nombre_proyecto = data.get('nombre_proyecto')
+            descripcion_proyecto = data.get('descripcion_proyecto')
+            estado_proyecto = data.get('estado_proyecto')
+            
+            if not id_proyecto:
+                return Response(
+                    {'error': 'provide a field (id_proyecto)'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE proyecto
+                    SET
+                    nombre_proyecto = COALESCE(%s, nombre_proyecto),
+                    descripcion_proyecto = COALESCE(%s, descripcion_proyecto),
+                    estado_proyecto = COALESCE(%s, estado_proyecto)
+                    WHERE id_proyecto = %s
+                """, [nombre_proyecto, descripcion_proyecto, estado_proyecto, id_proyecto])
+                
+                return Response({'message': 'Project updated successfully'})
+                
+        except Exception as err:
+            print(f"Error updating project: {err}")
+            return Response(
+                {'error': 'Some error has occured failed'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ProyectoEliminarView(APIView):
+    """Delete project."""
+    
+    def delete(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            id_proyecto = data.get('id_proyecto')
+            
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM proyecto WHERE id_proyecto = %s", [id_proyecto])
+                return Response("Proyecto eliminado")
+                
+        except Exception as err:
+            print(f"Error deleting project: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# ===========================================
+# VEHICULO ENDPOINTS
+# ===========================================
+
+class VehiculoNuevoView(APIView):
+    """Create new vehicle."""
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            descripcion = data.get('descripcion')
+            placa_vehiculo = data.get('placa_vehiculo')
+            capacidad_vehiculo = data.get('capacidad_vehiculo')
+            disponibilidad_vehiculo = data.get('disponibilidad_vehiculo')
+            soat_vehiculo = data.get('soat_vehiculo')
+            tecno_vehiculo = data.get('tecno_vehiculo')
+            impuesto_vehiculo = data.get('impuesto_vehiculo')
+            proyecto_id_proyecto = data.get('proyecto_id_proyecto')
+            modelo = data.get('modelo')
+            ciudad_matricula = data.get('ciudad_matricula')
+            tipo_transporte = data.get('tipo_transporte')
+            
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO vehiculo (
+                        descripcion,
+                        placa_vehiculo,
+                        capacidad_vehiculo,
+                        disponibilidad_vehiculo,
+                        soat_vehiculo,
+                        tecno_vehiculo,
+                        impuesto_vehiculo,
+                        proyecto_id_proyecto,
+                        modelo,
+                        ciudad_matricula,
+                        tipo_transporte
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
+                """, [
+                    descripcion, placa_vehiculo, capacidad_vehiculo, disponibilidad_vehiculo,
+                    soat_vehiculo, tecno_vehiculo, impuesto_vehiculo, proyecto_id_proyecto,
+                    modelo, ciudad_matricula, tipo_transporte
+                ])
+                
+                row = cursor.fetchone()
+                if row:
+                    keys = [
+                        'id_vehiculo', 'descripcion', 'placa_vehiculo', 'capacidad_vehiculo',
+                        'disponibilidad_vehiculo', 'soat_vehiculo', 'tecno_vehiculo',
+                        'impuesto_vehiculo', 'proyecto_id_proyecto', 'modelo',
+                        'ciudad_matricula', 'tipo_transporte'
+                    ]
+                    vehiculo = dict(zip(keys, row))
+                    return Response(vehiculo, status=status.HTTP_201_CREATED)
+                    
+        except Exception as err:
+            print(f"Error creating vehicle: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# ===========================================
+# TIPO USUARIO ENDPOINTS
+# ===========================================
+
+class TipoUsuarioNuevoView(APIView):
+    """Create new user type."""
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            tipo_usuario = data.get('tipo_usuario')
+            
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO tipo_usuario (tipo_usuario) VALUES (%s) RETURNING *
+                """, [tipo_usuario])
+                
+                row = cursor.fetchone()
+                if row:
+                    keys = ['id_tipo_usuario', 'tipo_usuario']
+                    tipo_user = dict(zip(keys, row))
+                    return Response(tipo_user, status=status.HTTP_201_CREATED)
+                    
+        except Exception as err:
+            print(f"Error creating user type: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class TipoUsuarioListaView(APIView):
+    """Get all user types."""
+    
+    def get(self, request, *args, **kwargs):
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM tipo_usuario")
+                rows = cursor.fetchall()
+                
+                keys = ['id_tipo_usuario', 'tipo_usuario']
+                tipos_usuario = [dict(zip(keys, row)) for row in rows]
+                return Response(tipos_usuario)
+                
+        except Exception as err:
+            print(f"Error getting user types: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class TipoUsuarioEditarView(APIView):
+    """Edit user type."""
+    
+    def put(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            tipo_usuario = data.get('tipo_usuario')
+            id_tipo_usuario = data.get('id_tipo_usuario')
+            
+            if not tipo_usuario:
+                return Response(
+                    {'error': 'provide a field (tipo_usuario)'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE tipo_usuario
+                    SET tipo_usuario = COALESCE(%s, tipo_usuario)
+                    WHERE id_tipo_usuario = %s
+                """, [tipo_usuario, id_tipo_usuario])
+                
+                return Response({'message': 'User type updated successfully'})
+                
+        except Exception as err:
+            print(f"Error updating user type: {err}")
+            return Response(
+                {'error': 'Some error has occured failed'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class TipoUsuarioEliminarView(APIView):
+    """Delete user type."""
+    
+    def delete(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            id_tipo_usuario = data.get('id_tipo_usuario')
+            
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM tipo_usuario WHERE id_tipo_usuario = %s", [id_tipo_usuario])
+                return Response("Tipo de usuario eliminado")
+                
+        except Exception as err:
+            print(f"Error deleting user type: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# ===========================================
+# TIPO DOCUMENTO ENDPOINTS
+# ===========================================
+
+class TipoDocumentoNuevoView(APIView):
+    """Create new document type."""
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            nombre_documento = data.get('nombre_documento')
+            tipo_documento = data.get('tipo_documento')
+            estado_documento = data.get('estado_documento')
+            
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO tipo_documento
+                    (nombre_documento, tipo_documento, estado_documento)
+                    VALUES (%s, %s, %s) RETURNING *
+                """, [nombre_documento, tipo_documento, estado_documento])
+                
+                row = cursor.fetchone()
+                if row:
+                    keys = ['id_tipo_documento', 'nombre_documento', 'tipo_documento', 'estado_documento']
+                    tipo_doc = dict(zip(keys, row))
+                    return Response(tipo_doc, status=status.HTTP_201_CREATED)
+                    
+        except Exception as err:
+            print(f"Error creating document type: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class TipoDocumentoListaActivosView(APIView):
+    """Get active document types."""
+    
+    def get(self, request, *args, **kwargs):
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM tipo_documento WHERE estado_documento = true")
+                rows = cursor.fetchall()
+                
+                keys = ['id_tipo_documento', 'nombre_documento', 'tipo_documento', 'estado_documento']
+                tipos_documento = [dict(zip(keys, row)) for row in rows]
+                return Response(tipos_documento)
+                
+        except Exception as err:
+            print(f"Error getting active document types: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class TipoDocumentoListaView(APIView):
+    """Get all document types."""
+    
+    def get(self, request, *args, **kwargs):
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM tipo_documento")
+                rows = cursor.fetchall()
+                
+                keys = ['id_tipo_documento', 'nombre_documento', 'tipo_documento', 'estado_documento']
+                tipos_documento = [dict(zip(keys, row)) for row in rows]
+                return Response(tipos_documento)
+                
+        except Exception as err:
+            print(f"Error getting document types: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class TipoDocumentoEditarView(APIView):
+    """Edit document type."""
+    
+    def put(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            id_tipo_documento = data.get('id_tipo_documento')
+            nombre_documento = data.get('nombre_documento')
+            tipo_documento = data.get('tipo_documento')
+            estado_documento = data.get('estado_documento')
+            
+            if not id_tipo_documento:
+                return Response(
+                    {'error': 'provide a field (id_tipo_documento)'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE tipo_documento
+                    SET
+                    nombre_documento = COALESCE(%s, nombre_documento),
+                    tipo_documento = COALESCE(%s, tipo_documento),
+                    estado_documento = COALESCE(%s, estado_documento)
+                    WHERE id_tipo_documento = %s
+                """, [nombre_documento, tipo_documento, estado_documento, id_tipo_documento])
+                
+                return Response({'message': 'Document type updated successfully'})
+                
+        except Exception as err:
+            print(f"Error updating document type: {err}")
+            return Response(
+                {'error': 'Some error has occured failed'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class TipoDocumentoEliminarView(APIView):
+    """Delete document type."""
+    
+    def delete(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            id_tipo_documento = data.get('id_tipo_documento')
+            
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM tipo_documento WHERE id_tipo_documento = %s", [id_tipo_documento])
+                return Response("Tipo de documento eliminado")
+                
+        except Exception as err:
+            print(f"Error deleting document type: {err}")
+            return Response(
+                {'error': 'Internal server error'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
