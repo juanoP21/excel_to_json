@@ -33,8 +33,37 @@ def _parse_row(row: pd.Series) -> dict:
     if referencia == transaccion:
         referencia = ""
 
+    # Parse date - handle YYYY/MM/DD format and convert to DD/MM/YYYY
+    fecha_formatted = ""
+    if fecha:
+        try:
+            # If date is in YYYY/MM/DD format
+            if "/" in fecha:
+                parts = fecha.split("/")
+                if len(parts) == 3:
+                    # Check if first part is year (4 digits)
+                    if len(parts[0]) == 4 and parts[0].isdigit():
+                        # YYYY/MM/DD format
+                        year, month, day = parts
+                        fecha_formatted = f"{day.zfill(2)}/{month.zfill(2)}/{year}"
+                    else:
+                        # Assume DD/MM/YYYY format already
+                        fecha_formatted = fecha
+                else:
+                    fecha_formatted = fecha
+            else:
+                # Try parsing with pandas as fallback
+                fecha_dt = pd.to_datetime(fecha, errors="coerce")
+                if fecha_dt is not pd.NaT:
+                    fecha_formatted = fecha_dt.strftime("%d/%m/%Y")
+                else:
+                    fecha_formatted = fecha
+        except Exception:
+            fecha_formatted = fecha  # Keep original if parsing fails
+
     return {
-        "Fecha": pd.to_datetime(fecha, dayfirst=True, errors="coerce").strftime("%m/%d/%Y"), "importe_credito": credito,
+        "Fecha": fecha_formatted,
+        "importe_credito": credito,
         "importe_debito": debito,
         "referencia": referencia,
         "Info_detallada": transaccion,
@@ -53,4 +82,13 @@ def process(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"Columnas faltantes: {', '.join(missing)}")
 
     records = [_parse_row(row) for _, row in df.iterrows()]
-    return pd.DataFrame(records)
+    result = pd.DataFrame(records)
+
+    # Sort transactions by date from earliest to latest
+    fechas = pd.to_datetime(result["Fecha"], format="%d/%m/%Y", errors="coerce")
+    result.insert(0, "_sort_date", fechas)
+    result.sort_values("_sort_date", inplace=True)
+    result.drop(columns=["_sort_date"], inplace=True)
+    result.reset_index(drop=True, inplace=True)
+
+    return result
