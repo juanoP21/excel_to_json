@@ -20,7 +20,7 @@ from authapp import views as auth_views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('api.urls')),
+    path('api/excel/', include('api.urls')),
     path('api/auth/', include('authapp.urls')),
     # Direct routes for frontend compatibility
     re_path(r'^register/?$', auth_views.RegisterView.as_view(), name='register-direct'),

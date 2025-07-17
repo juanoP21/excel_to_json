@@ -5,6 +5,8 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status
 
+from .tasks import worker as excel_worker
+
 
 from .banks.registry import get_processor
 
@@ -66,3 +68,56 @@ class ExcelToJsonView(APIView):
             skiprows=skip,
             engine=engine,
         )
+
+
+class ExcelUploadView(APIView):
+    """Enqueue Excel files for background processing."""
+
+    parser_classes = [MultiPartParser]
+
+    def post(self, request, *args, **kwargs):
+        files = request.FILES.getlist('files') or request.FILES.getlist('file')
+        if not files:
+            single = request.FILES.get('file')
+            if single:
+                files = [single]
+        if not files:
+            return Response(
+                {'error': 'Archivo no proporcionado', 'detail': "Se requiere el campo 'file' o 'files'"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        params = {
+            'branch': request.data.get('branch', '').lower(),
+            'worksheet': request.data.get('worksheet'),
+            'header_row': request.data.get('header_row', 0),
+            'skip_rows': request.data.get('skip_rows'),
+            'remove_unnamed': request.data.get('remove_unnamed', 'true'),
+        }
+
+        enqueued = []
+        failed = []
+        for f in files:
+            try:
+                excel_worker.enqueue(f.name, f.read(), params)
+                enqueued.append(f.name)
+            except Exception as e:
+                failed.append({'file': f.name, 'error': str(e)})
+
+        if enqueued and not failed:
+            message = f"✅ {len(enqueued)} archivo(s) encolado(s)"
+            status_code = status.HTTP_202_ACCEPTED
+        elif enqueued and failed:
+            message = f"⚠️ {len(enqueued)} archivo(s) encolado(s), {len(failed)} fallaron"
+            status_code = status.HTTP_202_ACCEPTED
+        else:
+            message = "❌ No se pudo encolar ningún archivo"
+            status_code = status.HTTP_400_BAD_REQUEST
+
+        return Response({
+            'message': message,
+            'enqueued_files': enqueued,
+            'failed_files': failed,
+            'queue_size': excel_worker.get_queue_status()['queue_size'],
+            'params': params,
+        }, status=status_code)
