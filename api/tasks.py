@@ -8,7 +8,7 @@ import pandas as pd
 
 from .banks.registry import get_processor
 
-WEBHOOK_URL = "https://automatizacion.commerk.com:4444/webhook/8dafec2e-f35a-4c3c-bcae-2a395effe7e6"
+WEBHOOK_URL = "https://automatizacion.commerk.com:4444/webhook-test/8dafec2e-f35a-4c3c-bcae-2a395effe7e6"
 MAX_RETRIES = 3
 
 
@@ -52,7 +52,7 @@ def process_and_send(file_name: str, data: bytes, params: dict) -> None:
     df = df.astype(str)
 
     records = df.to_dict(orient='records')
-    key = 'movimientos' if branch in ('occidente', 'agrario', 'alianza', 'bbva', 'avvillas', 'itau') else 'data'
+    key = 'data' if branch in ('occidente', 'agrario', 'alianza', 'bbva', 'avvillas', 'itau') else 'movimientos'
 
     payload = {
         'bank_key': branch,
