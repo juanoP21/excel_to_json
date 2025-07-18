@@ -101,7 +101,7 @@ def parse_func(movimientos):
         else:
             nombre = ref1 or ref2
 
-        desc = mov.get("descripcion", "").strip()
+        desc = mov.get("descripcion", "").strip() or mov.get("'descripci��n", "").strip()
         raw_val = (
             mov.get("valor")
             or mov.get("documento")
