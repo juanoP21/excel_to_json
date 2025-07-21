@@ -283,6 +283,23 @@ def end_pools():
     _is_using_tigo = False
 
 
+def apply_django_db_settings(settings_module: Any) -> None:
+    """Update ``settings_module.DATABASES['default']`` with the active config."""
+    if not settings_module:
+        return
+    cfg = _config_tigo() if _is_using_tigo else _config_claro()
+    db_cfg = settings_module.DATABASES.get('default', {})
+    db_cfg.update({
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': cfg.get('dbname'),
+        'USER': cfg.get('user'),
+        'PASSWORD': cfg.get('password'),
+        'HOST': cfg.get('host'),
+        'PORT': str(cfg.get('port', 5432)),
+    })
+    settings_module.DATABASES['default'] = db_cfg
+
+
 def get_status() -> Dict[str, Any]:
     return {
         "is_connected": _active_pool is not None,
